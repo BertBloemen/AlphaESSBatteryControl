@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<AlphaESSControlConfig>
-    <alphaEssISettings>
-        <alphaEssInverterModel>AlphaESS X3</alphaEssInverterModel>
-        <alphaEssAppId></alphaEssAppId>
-        <alphaEssApiKey></alphaEssApiKey>
-        <alphaEssSystemId>ALD011025020167</alphaEssSystemId>
-    </alphaEssISettings>
-</AlphaESSControlConfig>
