@@ -1,9 +1,10 @@
 # AlphaESSBatteryControl
-Dynamic steering script for the Alpha ESS battery, Powershell based.
+Dynamic steering script for the Alpha ESS Battery.
+Create the AlphaESSControlConfig.xml file in the same directory with the following structure:
 
 
-Configuration file: 
 
+```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <AlphaESSControlConfig>
     <alphaEssISettings>
