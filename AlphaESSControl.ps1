@@ -2,9 +2,17 @@
 
 $AlphaESSControlConfig = [XML](Get-Content .\AlphaESSControlConfig.Xml)
 
-$alphaEssAppId = $AlphaESSControlConfig.AlphaESSControlConfig.alphaEssISettings.alphaEssAppId
-$alphaEssApiKey = $AlphaESSControlConfig.AlphaESSControlConfig.alphaEssISettings.alphaEssApiKey
-$alphaEssSystemId = $AlphaESSControlConfig.AlphaESSControlConfig.alphaEssISettings.alphaEssSystemId
+$alphaEssAppId = $AlphaESSControlConfig.AlphaESSControlConfig.alphaEssSettings.alphaEssAppId
+$alphaEssApiKey = $AlphaESSControlConfig.AlphaESSControlConfig.alphaEssSettings.alphaEssApiKey
+$alphaEssSystemId = $AlphaESSControlConfig.AlphaESSControlConfig.alphaEssSettings.alphaEssSystemId
+
+$maxPowerFromGrid = [int]$AlphaESSControlConfig.AlphaESSControlConfig.controlSettings.maxPowerFromGrid
+$minBatterySoC = [int]$AlphaESSControlConfig.AlphaESSControlConfig.controlSettings.minBatterySoC
+$maxBatterySoC = [int]$AlphaESSControlConfig.AlphaESSControlConfig.controlSettings.maxBatterySoC
+$lowPriceThresholdPct = [double]$AlphaESSControlConfig.AlphaESSControlConfig.controlSettings.lowPriceThresholdPct
+$highPriceThresholdPct = [double]$AlphaESSControlConfig.AlphaESSControlConfig.controlSettings.highPriceThresholdPct
+
+# FUNCTIONS
 
 
 # 1. Fetch EPEX Spot Prices (example placeholder)
@@ -67,7 +75,6 @@ function Get-AlphaESSAuthHeaders {
 function Get-BatteryStatus {
     
     $headers = Get-AlphaESSAuthHeaders
-
     
     # API endpoint
     $url = "https://openapi.alphaess.com/api/getLastPowerData?sysSn=$alphaEssSystemId"
@@ -79,7 +86,6 @@ function Get-BatteryStatus {
         Write-Error "API call failed: $($_.Exception.Message)"
     }
     
-
     return $response.data.soc
 }
 
@@ -89,7 +95,6 @@ function Get-BatteryStatus {
 function ChargeBattery($activate) {
 
     $headers = Get-AlphaESSAuthHeaders
-
 
     try {
 
@@ -102,9 +107,9 @@ function ChargeBattery($activate) {
         $url = "https://openapi.alphaess.com/api/updateChargeConfigInfo?sysSn=$alphaEssSystemId"
 
         if ($activate){
-            $body = @{ "sysSn" = "$alphaEssSystemId"; "gridChargePower" = 3000; "batHighCap" = 95; "gridCharge" = 1 ; "timeChaf1" = $timeStart; "timeChaf2" = "00:00"; "timeChae1" = $timeStop; "timeChae2" = "00:00" } | ConvertTo-Json
+            $body = @{ "sysSn" = "$alphaEssSystemId"; "gridChargePower" = $maxPowerFromGrid; "batHighCap" = $maxBatterySoC; "gridCharge" = 1 ; "timeChaf1" = $timeStart; "timeChaf2" = "00:00"; "timeChae1" = $timeStop; "timeChae2" = "00:00" } | ConvertTo-Json
         }else{
-            $body = @{ "sysSn" = "$alphaEssSystemId"; "gridChargePower" = 3000; "batHighCap" = 95; "gridCharge" = 0 ; "timeChaf1" = "00:00"; "timeChaf2" = "00:00"; "timeChae1" = "00:00"; "timeChae2" = "00:00" } | ConvertTo-Json
+            $body = @{ "sysSn" = "$alphaEssSystemId"; "gridChargePower" = $maxPowerFromGrid; "batHighCap" = $maxBatterySoC; "gridCharge" = 0 ; "timeChaf1" = "00:00"; "timeChaf2" = "00:00"; "timeChae1" = "00:00"; "timeChae2" = "00:00" } | ConvertTo-Json
         }
         $out = Invoke-RestMethod -Uri $url -Headers $headers -Body $body -Method POST
 
@@ -124,7 +129,7 @@ $PowerForecast = Get-PowerForecast
 #$lowPriceThreshold = ($prices | Measure-Object -Property Price -Average).Average
 
 $sortedPrices = $prices | Sort-Object Price | Select-Object -ExpandProperty Price
-$percentileIndex = [math]::Floor($sortedPrices.Count * 0.25)
+$percentileIndex = [math]::Floor($sortedPrices.Count * $lowPriceThresholdPct)
 $lowPriceThreshold = $sortedPrices[$percentileIndex]
 
 
