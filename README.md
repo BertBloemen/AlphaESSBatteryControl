@@ -13,5 +13,13 @@ Create the AlphaESSControlConfig.xml file in the same directory with the followi
         <alphaEssApiKey>xxxxxxxxxxxxxxxxxxxxxxx</alphaEssApiKey>
         <alphaEssSystemId>ALDxxxxxxxxxxxxxxxxxx</alphaEssSystemId>
     </alphaEssISettings>
+    <controlSettings>
+        <minBatterySoC>15</minBatterySoC>
+        <maxBatterySoC>95</maxBatterySoC>
+        <maxPowerFromGrid>3000</maxPowerFromGrid>
+        <lowPriceThresholdPct>0.25</lowPriceThresholdPct>
+        <highPriceThresholdPct>0.75</highPriceThresholdPct>
+    </controlSettings>
+</AlphaESSControlConfig>
 </AlphaESSControlConfig>
 
