@@ -1,8 +1,10 @@
 # CONFIGURATION
-$alphaEssAppId = "alpha3a43fcde85a39ebd"
-$alphaEssApiKey = "73a0430c02da47a18c1f351942e249b1"
-$alphaEssSystemId = "ALD011025020167"
-$openWeatherApiKey = "9a441de49a22a84a7a3ffe8d0cbc53ba"
+
+$AlphaESSControlConfig = [XML](Get-Content .\AlphaESSControlConfig.Xml)
+
+$alphaEssAppId = $AlphaESSControlConfig.AlphaESSControlConfig.alphaEssISettings.alphaEssAppId
+$alphaEssApiKey = $AlphaESSControlConfig.AlphaESSControlConfig.alphaEssISettings.alphaEssApiKey
+$alphaEssSystemId = $AlphaESSControlConfig.AlphaESSControlConfig.alphaEssISettings.alphaEssSystemId
 
 
 # 1. Fetch EPEX Spot Prices (example placeholder)
@@ -141,7 +143,7 @@ $PowerPrediction = ($PowerForecast | where-object {$_.timestamp -lt (get-date).A
 $PowerMax = ($PowerForecast | where-object {$_.timestamp -lt (get-date).AddHours(24)} | Measure-Object -Property clear_sky -Sum).Sum /4
 
 
-$usage = Import-Csv "c:\temp\usage.txt" -Delimiter ","
+$usage = Import-Csv ".\usage.txt" -Delimiter ","
 $minSoc = 15
 
 $joined = @()
@@ -185,17 +187,17 @@ foreach ($p in $PowerForecast) {
 
 $datetime = Get-Date -Format "dd-MM-yyyy_HHmm"
 $joined | Select-Object -First 400 | ft -Property *
-$joined | Export-Csv -Path "c:\temp\$datetime.csv" -Delimiter ";" -NoTypeInformation
+$joined | Export-Csv -Path ".\logs\$datetime.csv" -Delimiter ";" -NoTypeInformation
 
 $minSOC = ($joined | Select-Object -First 50 | measure -Property EstSOC -Minimum).Minimum
 
 if ($joined[0].ChargeBattFromGrid -and ($minSOC -lt 10)){
     "$datetime - Start opladen, minSoc=$minSOC, price=$($joined[0].Price), price_threshold=$lowPriceThreshold"
-    "$datetime - Start opladen, minSoc=$minSOC, price=$($joined[0].Price), price_threshold=$lowPriceThreshold" >> c:\temp\_alphaesslog.txt
+    "$datetime - Start opladen, minSoc=$minSOC, price=$($joined[0].Price), price_threshold=$lowPriceThreshold" >> .\logs\_alphaesslog.txt
     ChargeBattery($true)
 }else{
     "$datetime - Stop opladen, minSoc=$minSOC, price=$($joined[0].Price), price_threshold=$lowPriceThreshold"
-    "$datetime - Stop opladen, minSoc=$minSOC, price=$($joined[0].Price), price_threshold=$lowPriceThreshold" >> c:\temp\_alphaesslog.txt
+    "$datetime - Stop opladen, minSoc=$minSOC, price=$($joined[0].Price), price_threshold=$lowPriceThreshold" >> .\logs\_alphaesslog.txt
     ChargeBattery($false)
 }
     
