@@ -4,6 +4,6 @@
         <alphaEssInverterModel>AlphaESS X3</alphaEssInverterModel>
         <alphaEssAppId></alphaEssAppId>
         <alphaEssApiKey></alphaEssApiKey>
-        <alphaEssSystemId></alphaEssSystemId>
+        <alphaEssSystemId>ALD011025020167</alphaEssSystemId>
     </alphaEssISettings>
 </AlphaESSControlConfig>
