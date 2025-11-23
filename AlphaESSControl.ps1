@@ -47,10 +47,7 @@ function Get-PowerForecast {
 
 }
 
-# 3. Fetch Battery Status
-function Get-BatteryStatus {
-    
-
+function Get-AlphaESSAuthHeaders {
     $timestamp = [math]::Floor((Get-Date).ToUniversalTime().Subtract((Get-Date "1970-01-01T00:00:00Z")).TotalSeconds)+3600
     $signString = "$alphaEssAppId$alphaEssApiKey$timestamp"
     $sha512 = [System.Security.Cryptography.SHA512]::Create()
@@ -58,13 +55,20 @@ function Get-BatteryStatus {
     $hashBytes = $sha512.ComputeHash($bytes)
     $sign = ([BitConverter]::ToString($hashBytes) -replace "-", "").toLower()
 
-    # Build authentication header
-    $headers = @{
+    return @{
         "appId"     = $alphaEssAppId
         "timeStamp" = $timestamp
         "sign"      = $sign
     }
+}
 
+
+# 3. Fetch Battery Status
+function Get-BatteryStatus {
+    
+    $headers = Get-AlphaESSAuthHeaders
+
+    
     # API endpoint
     $url = "https://openapi.alphaess.com/api/getLastPowerData?sysSn=$alphaEssSystemId"
 
@@ -84,20 +88,7 @@ function Get-BatteryStatus {
 # 5. Send Charge Command
 function ChargeBattery($activate) {
 
-    $timestamp = [math]::Floor((Get-Date).ToUniversalTime().Subtract((Get-Date "1970-01-01T00:00:00Z")).TotalSeconds)+3600
-    $signString = "$alphaEssAppId$alphaEssApiKey$timestamp"
-    $sha512 = [System.Security.Cryptography.SHA512]::Create()
-    $bytes = [System.Text.Encoding]::UTF8.GetBytes($signString)
-    $hashBytes = $sha512.ComputeHash($bytes)
-    $sign = ([BitConverter]::ToString($hashBytes) -replace "-", "").toLower()
-
-    # Build headers
-    $headers = @{
-        "appId"     = $alphaEssAppId
-        "timeStamp" = $timestamp
-        "sign"      = $sign
-        "Content-Type" = "application/json"
-    }
+    $headers = Get-AlphaESSAuthHeaders
 
 
     try {
