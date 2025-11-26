@@ -22,4 +22,6 @@ Create the AlphaESSControlConfig.xml file in the same directory with the followi
     </controlSettings>
 </AlphaESSControlConfig>
 </AlphaESSControlConfig>
+```
 
+Usage.txt is a csv with estimated power consumption per hour.
