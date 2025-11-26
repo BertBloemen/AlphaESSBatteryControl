@@ -20,6 +20,16 @@ Create the AlphaESSControlConfig.xml file in the same directory with the followi
         <lowPriceThresholdPct>0.25</lowPriceThresholdPct>
         <highPriceThresholdPct>0.75</highPriceThresholdPct>
     </controlSettings>
+    <PVSettings>
+        <latitude>51.22</latitude>
+        <longitude>4.4</longitude>
+        <altitude>10</altitude>
+        <tilt>0.25</tilt>
+        <orientation>180</orientation>
+        <totalWattPeak>6125</totalWattPeak>
+        <WattInvertor>5000</WattInvertor>
+        <timezone>Europe/Brussels</timezone>
+    </PVSettings>
 </AlphaESSControlConfig>
 </AlphaESSControlConfig>
 ```
