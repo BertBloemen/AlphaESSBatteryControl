@@ -1,0 +1,5 @@
+26-11-2025_1937 - Stop opladen, minSoc=4, price=0.12243, price_threshold=0.08258
+26-11-2025_1953 - Stop opladen, minSoc=4, price=0.10881, price_threshold=0.08258
+26-11-2025_1959 - Stop opladen, minSoc=4, price=0.12481, price_threshold=0.05266
+26-11-2025_2002 - Stop opladen, minSoc=4, price=0.12481, price_threshold=0.08202
+26-11-2025_2006 - Stop opladen, minSoc=4, price=0.12481, price_threshold=0.08202

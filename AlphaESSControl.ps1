@@ -4,14 +4,12 @@
 if ($env:AZUREPS_HOST_ENVIRONMENT) { 
     
     "Running in Azure Runbook" 
-
     Import-Module Az.Storage
 
     # CONFIGURATION
-
     $storageAccountName = "bbphotostorage"
     $containerName = "alphaess"
-    $resourceGroupName = "AlphaESSControl"
+    #$resourceGroupName = "AlphaESSControl"
 
     Connect-AzAccount -Identity
 
@@ -32,15 +30,9 @@ if ($env:AZUREPS_HOST_ENVIRONMENT) {
 $usage = Import-Csv ".\usage.txt" -Delimiter ","
 
 
-$alphaEssAppId = $AlphaESSControlConfig.AlphaESSControlConfig.alphaEssSettings.alphaEssAppId
-$alphaEssApiKey = $AlphaESSControlConfig.AlphaESSControlConfig.alphaEssSettings.alphaEssApiKey
-$alphaEssSystemId = $AlphaESSControlConfig.AlphaESSControlConfig.alphaEssSettings.alphaEssSystemId
-
-$maxPowerFromGrid = [int]$AlphaESSControlConfig.AlphaESSControlConfig.controlSettings.maxPowerFromGrid
-$minBatterySoC = [int]$AlphaESSControlConfig.AlphaESSControlConfig.controlSettings.minBatterySoC
-$maxBatterySoC = [int]$AlphaESSControlConfig.AlphaESSControlConfig.controlSettings.maxBatterySoC
-$lowPriceThresholdPct = [double]$AlphaESSControlConfig.AlphaESSControlConfig.controlSettings.lowPriceThresholdPct
-$highPriceThresholdPct = [double]$AlphaESSControlConfig.AlphaESSControlConfig.controlSettings.highPriceThresholdPct
+$AlphaESSControl = $AlphaESSControlConfig.AlphaESSControlConfig.controlSettings
+$AlphaESSSettings = $AlphaESSControlConfig.AlphaESSControlConfig.alphaEssSettings
+$PVsettings = $AlphaESSControlConfig.AlphaESSControlConfig.PVSettings
 
 
 # FUNCTIONS
@@ -53,10 +45,8 @@ function Get-EpexPrices {
 
     $prices = ((Invoke-WebRequest -UseBasicParsing -Uri "https://dataportal-api.nordpoolgroup.com/api/DayAheadPrices?market=DayAhead&deliveryArea=BE&currency=EUR&date=$today").content | ConvertFrom-Json).multiAreaEntries
     $prices += ((Invoke-WebRequest -UseBasicParsing -Uri "https://dataportal-api.nordpoolgroup.com/api/DayAheadPrices?market=DayAhead&deliveryArea=BE&currency=EUR&date=$tomorrow").content | ConvertFrom-Json).multiAreaEntries
-
     
-    $prices = $prices | select deliveryStart, @{Name="Timestamp";Expression={get-date ($_.deliveryStart)}}, @{Name="Price";Expression={($_.entryPerArea.BE/1000)}} | Where-Object {($_.timestamp -ge (get-date).AddHours(-1))} | Select-Object Timestamp,Price
-
+    $prices = $prices | Select-Object deliveryStart, @{Name="Timestamp";Expression={get-date ($_.deliveryStart)}}, @{Name="Price";Expression={($_.entryPerArea.BE/1000)}} | Where-Object {($_.timestamp -ge (get-date).AddHours(-1))} | Select-Object Timestamp,Price
     
     return $prices
     
@@ -64,35 +54,37 @@ function Get-EpexPrices {
 
 # Fetch Power Forecast using external api
 function Get-PowerForecast {
-
+    
     $body = @{
         date = (Get-Date).ToString("dd-MM-yyyy")
-        location = @{ lat = 51.22; lng = 4.40 }
-        altitude = 10
-        tilt = 35
-        azimuth = 180
-        totalWattPeak = 6125
-        wattInvertor = 5000
-        timezone = "Europe/Brussels"
+        location = @{ lat = [double]$PVsettings.latitude ; lng = [double]$PVsettings.longitude }
+        altitude = [int]$PVsettings.altitude
+        tilt = [int]$PVsettings.tilt
+        azimuth = [int]$PVsettings.orientation
+        totalWattPeak = [int]$PVsettings.totalWattPeak
+        wattInvertor = [int]$PVsettings.WattInvertor
+        timezone = $PVsettings.timezone
     } | ConvertTo-Json -Depth 3
 
     $response = Invoke-RestMethod -Uri "https://api.solar-forecast.org/forecast?provider=openmeteo" -Method POST -Body $body -ContentType "application/json" -UseBasicParsing
-    $prediction = $response | select * , @{Name="TimeStamp";Expression={([System.DateTimeOffset]::FromUnixTimeSeconds($_.dt).ToLocalTime().DateTime)}} | where-object { ($_.timestamp -ge (Get-Date).AddMinutes(-14)) -and  ($_.timestamp -lt (Get-Date).Date.AddDays(2))  }
-    return $prediction | select -Property Timestamp, P_predicted, clear_sky, clouds_all
+    $prediction = $response | Select-Object * , @{Name="TimeStamp";Expression={([System.DateTimeOffset]::FromUnixTimeSeconds($_.dt).ToLocalTime().DateTime)}} | where-object { ($_.timestamp -ge (Get-Date).AddMinutes(-14)) -and  ($_.timestamp -lt (Get-Date).Date.AddDays(2))  }
+    return $prediction | Select-Object -Property Timestamp, P_predicted, clear_sky, clouds_all
 
 }
 
 # construct the Alpha ESS authentication headers based on the specs of the API documentation
+
+
 function Get-AlphaESSAuthHeaders {
     $timestamp = [math]::Floor((Get-Date).ToUniversalTime().Subtract((Get-Date "1970-01-01T00:00:00Z")).TotalSeconds)+3600
-    $signString = "$alphaEssAppId$alphaEssApiKey$timestamp"
+    $signString = "$($AlphaESSSettings.alphaEssAppId)$($AlphaESSSettings.alphaEssApiKey)$timestamp"
     $sha512 = [System.Security.Cryptography.SHA512]::Create()
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($signString)
     $hashBytes = $sha512.ComputeHash($bytes)
     $sign = ([BitConverter]::ToString($hashBytes) -replace "-", "").toLower()
 
     return @{
-        "appId"     = $alphaEssAppId
+        "appId"     = $AlphaESSSettings.alphaEssAppId
         "timeStamp" = $timestamp
         "sign"      = $sign
     }
@@ -105,7 +97,7 @@ function Get-BatteryStatus {
     $headers = Get-AlphaESSAuthHeaders
     
     # API endpoint
-    $url = "https://openapi.alphaess.com/api/getLastPowerData?sysSn=$alphaEssSystemId"
+    $url = "https://openapi.alphaess.com/api/getLastPowerData?sysSn=$($AlphaESSSettings.alphaEssSystemId)"
 
     # Make the request
     try {
@@ -132,12 +124,12 @@ function ChargeBattery($activate) {
         $timeStart = $roundedTime.ToString("HH:mm")
         $timeStop = $roundedTime.AddMinutes(15).ToString("HH:mm")
 
-        $url = "https://openapi.alphaess.com/api/updateChargeConfigInfo?sysSn=$alphaEssSystemId"
+        $url = "https://openapi.alphaess.com/api/updateChargeConfigInfo?sysSn=$($AlphaESSSettings.alphaEssSystemId)"
 
         if ($activate){
-            $body = @{ "sysSn" = "$alphaEssSystemId"; "gridChargePower" = $maxPowerFromGrid; "batHighCap" = $maxBatterySoC; "gridCharge" = 1 ; "timeChaf1" = $timeStart; "timeChaf2" = "00:00"; "timeChae1" = $timeStop; "timeChae2" = "00:00" } | ConvertTo-Json
+            $body = @{ "sysSn" = "$($AlphaESSSettings.alphaEssSystemId)"; "gridChargePower" = $($AlphaESSControl.maxPowerFromGrid); "batHighCap" = $($AlphaESSControl.maxBatterySoC); "gridCharge" = 1 ; "timeChaf1" = $timeStart; "timeChaf2" = "00:00"; "timeChae1" = $timeStop; "timeChae2" = "00:00" } | ConvertTo-Json
         }else{
-            $body = @{ "sysSn" = "$alphaEssSystemId"; "gridChargePower" = $maxPowerFromGrid; "batHighCap" = $maxBatterySoC; "gridCharge" = 0 ; "timeChaf1" = "00:00"; "timeChaf2" = "00:00"; "timeChae1" = "00:00"; "timeChae2" = "00:00" } | ConvertTo-Json
+            $body = @{ "sysSn" = "$($AlphaESSSettings.alphaEssSystemId)"; "gridChargePower" = $($AlphaESSControl.maxPowerFromGrid); "batHighCap" = $($AlphaESSControl.maxBatterySoC); "gridCharge" = 0 ; "timeChaf1" = "00:00"; "timeChaf2" = "00:00"; "timeChae1" = "00:00"; "timeChae2" = "00:00" } | ConvertTo-Json
         }
         $out = Invoke-RestMethod -Uri $url -Headers $headers -Body $body -Method POST
 
@@ -158,7 +150,7 @@ $PowerForecast = Get-PowerForecast
 
 #$lowPriceThreshold = ($prices | Measure-Object -Property Price -Average).Average
 $sortedPrices = $prices | Sort-Object Price | Select-Object -ExpandProperty Price
-$percentileIndex = [math]::Floor($sortedPrices.Count * $lowPriceThresholdPct)
+$percentileIndex = [math]::Floor($sortedPrices.Count * $AlphaESSControl.lowPriceThresholdPct)
 $lowPriceThreshold = $sortedPrices[$percentileIndex]
 
 
@@ -210,7 +202,7 @@ foreach ($p in $PowerForecast) {
 $datetime = Get-Date -Format "dd-MM-yyyy_HHmm"
 $joined | Export-Csv -Path ".\$datetime.csv" -Delimiter ";" -NoTypeInformation
 
-$minSOC = ($joined | Select-Object -First 50 | measure -Property EstSOC -Minimum).Minimum
+$minSOC = ($joined | Select-Object -First 50 | Measure-Object -Property EstSOC -Minimum).Minimum
 
 if ($joined[0].ChargeBattFromGrid -and ($minSOC -lt 10)){
     $action = "$datetime - Start opladen, minSoc=$minSOC, price=$($joined[0].Price), price_threshold=$lowPriceThreshold"
