@@ -34,19 +34,24 @@ $AlphaESSControl = $AlphaESSControlConfig.AlphaESSControlConfig.controlSettings
 $AlphaESSSettings = $AlphaESSControlConfig.AlphaESSControlConfig.alphaEssSettings
 $PVsettings = $AlphaESSControlConfig.AlphaESSControlConfig.PVSettings
 
+$utcNow = (Get-Date).ToUniversalTime()
+$cetZone = [System.TimeZoneInfo]::FindSystemTimeZoneById("Central European Standard Time")
+$datetimeCET = [System.TimeZoneInfo]::ConvertTimeFromUtc($utcNow, $cetZone)
+
+
 
 # FUNCTIONS
 # Fetch EPEX Spot Prices 
 function Get-EpexPrices {
     
     
-    $today = get-date -Format "yyyy-MM-dd"
-    $tomorrow = get-date (get-date).AddDays(1) -Format "yyyy-MM-dd"
+    $today = get-date $datetimeCET -Format "yyyy-MM-dd"
+    $tomorrow = get-date (get-date $datetimeCET).AddDays(1) -Format "yyyy-MM-dd"
 
     $prices = ((Invoke-WebRequest -UseBasicParsing -Uri "https://dataportal-api.nordpoolgroup.com/api/DayAheadPrices?market=DayAhead&deliveryArea=BE&currency=EUR&date=$today").content | ConvertFrom-Json).multiAreaEntries
     $prices += ((Invoke-WebRequest -UseBasicParsing -Uri "https://dataportal-api.nordpoolgroup.com/api/DayAheadPrices?market=DayAhead&deliveryArea=BE&currency=EUR&date=$tomorrow").content | ConvertFrom-Json).multiAreaEntries
     
-    $prices = $prices | Select-Object deliveryStart, @{Name="Timestamp";Expression={get-date ($_.deliveryStart)}}, @{Name="Price";Expression={($_.entryPerArea.BE/1000)}} | Where-Object {($_.timestamp -ge (get-date).AddHours(-1))} | Select-Object Timestamp,Price
+    $prices = $prices | Select-Object deliveryStart, @{Name="Timestamp";Expression={get-date ($_.deliveryStart)}}, @{Name="Price";Expression={($_.entryPerArea.BE/1000)}} | Where-Object {($_.timestamp -ge (get-date $datetimeCET).AddHours(-1))} | Select-Object Timestamp,Price
     
     return $prices
     
@@ -56,7 +61,7 @@ function Get-EpexPrices {
 function Get-PowerForecast {
     
     $body = @{
-        date = (Get-Date).ToString("dd-MM-yyyy")
+        date = (Get-Date $datetimeCET).ToString("dd-MM-yyyy")
         location = @{ lat = [double]$PVsettings.latitude ; lng = [double]$PVsettings.longitude }
         altitude = [int]$PVsettings.altitude
         tilt = [int]$PVsettings.tilt
@@ -67,7 +72,7 @@ function Get-PowerForecast {
     } | ConvertTo-Json -Depth 3
 
     $response = Invoke-RestMethod -Uri "https://api.solar-forecast.org/forecast?provider=openmeteo" -Method POST -Body $body -ContentType "application/json" -UseBasicParsing
-    $prediction = $response | Select-Object * , @{Name="TimeStamp";Expression={([System.DateTimeOffset]::FromUnixTimeSeconds($_.dt).ToLocalTime().DateTime)}} | where-object { ($_.timestamp -ge (Get-Date).AddMinutes(-14)) -and  ($_.timestamp -lt (Get-Date).Date.AddDays(2))  }
+    $prediction = $response | Select-Object * , @{Name="TimeStamp";Expression={([System.DateTimeOffset]::FromUnixTimeSeconds($_.dt).ToLocalTime().DateTime)}} | where-object { ($_.timestamp -ge (Get-Date $datetimeCET).AddMinutes(-14)) -and  ($_.timestamp -lt (Get-Date $datetimeCET).Date.AddDays(2))  }
     return $prediction | Select-Object -Property Timestamp, P_predicted, clear_sky, clouds_all
 
 }
@@ -118,9 +123,9 @@ function ChargeBattery($activate) {
 
     try {
 
-        $now = Get-Date
+        $now = Get-Date $datetimeCET
         $roundedMinutes = [math]::Floor($now.Minute / 15) * 15
-        $roundedTime = Get-Date -Hour $now.Hour -Minute $roundedMinutes -Second 0
+        $roundedTime = Get-Date $datetimeCET -Hour $now.Hour -Minute $roundedMinutes -Second 0
         $timeStart = $roundedTime.ToString("HH:mm")
         $timeStop = $roundedTime.AddMinutes(15).ToString("HH:mm")
 
@@ -156,8 +161,8 @@ $lowPriceThreshold = $sortedPrices[$percentileIndex]
 
 $avgPrice = ($prices | Measure-Object -Property Price -Average).Average
 $minPrice = ($prices | Measure-Object -Property Price -Minimum).Minimum
-$PowerPrediction = ($PowerForecast | where-object {$_.timestamp -lt (get-date).AddHours(24)} | Measure-Object -Property P_predicted -Sum).Sum /4
-$PowerMax = ($PowerForecast | where-object {$_.timestamp -lt (get-date).AddHours(24)} | Measure-Object -Property clear_sky -Sum).Sum /4
+$PowerPrediction = ($PowerForecast | where-object {$_.timestamp -lt (get-date $datetimeCET).AddHours(24)} | Measure-Object -Property P_predicted -Sum).Sum /4
+$PowerMax = ($PowerForecast | where-object {$_.timestamp -lt (get-date $datetimeCET).AddHours(24)} | Measure-Object -Property clear_sky -Sum).Sum /4
 
 
 $joined = @()
@@ -199,7 +204,7 @@ foreach ($p in $PowerForecast) {
 }
 
 
-$datetime = Get-Date -Format "dd-MM-yyyy_HHmm"
+$datetime = Get-Date $datetimeCET -Format "dd-MM-yyyy_HHmm"
 $joined | Export-Csv -Path ".\$datetime.csv" -Delimiter ";" -NoTypeInformation
 
 $minSOC = ($joined | Select-Object -First 50 | Measure-Object -Property EstSOC -Minimum).Minimum
