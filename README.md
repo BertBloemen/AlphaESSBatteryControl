@@ -7,12 +7,12 @@ Create the AlphaESSControlConfig.xml file in the same directory with the followi
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <AlphaESSControlConfig>
-    <alphaEssISettings>
+    <alphaEssSettings>
         <alphaEssInverterModel>AlphaESS X3</alphaEssInverterModel>
         <alphaEssAppId>alphaxxxxxxxxxxxxxxxxxxx</alphaEssAppId>
         <alphaEssApiKey>xxxxxxxxxxxxxxxxxxxxxxx</alphaEssApiKey>
         <alphaEssSystemId>ALDxxxxxxxxxxxxxxxxxx</alphaEssSystemId>
-    </alphaEssISettings>
+    </alphaEssSettings>
     <controlSettings>
         <minBatterySoC>15</minBatterySoC>
         <maxBatterySoC>95</maxBatterySoC>
