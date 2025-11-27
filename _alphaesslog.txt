@@ -8,3 +8,4 @@
 26-11-2025_2056 - Stop opladen, minSoc=4, price=0.0914, price_threshold=0.08202
 27-11-2025_2040 - Stop opladen, minSoc=4, price=0.08014, price_threshold=0.07391
 27-11-2025_2109 - Stop opladen, minSoc=4, price=88.49, price_threshold=73.91
+27-11-2025_2113 - Stop opladen, minSoc=4, price=88.49, price_threshold=73.91

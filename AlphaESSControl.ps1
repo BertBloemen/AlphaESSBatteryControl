@@ -192,7 +192,7 @@ foreach ($p in $PowerForecast) {
         Timestamp   = $p.Timestamp
         P_predicted = $p.P_predicted
         Price       = $Price # in €/MWh
-        #PriceLuminusBuy = (($Price * 0.1018 + 2.1316)/100 + 5.99/100 + 5.0329/100 + 0.2042/100)*1.06 # in €/MWh
+        PriceLuminusBuy = (($Price * 0.1018 + 2.1316)/100 + 5.99/100 + 5.0329/100 + 0.2042/100)*1.06 # in €/MWh
         #PriceLuminusSell = ((1000*$Price * 0.1018 - 1.2685)/100 - 5.99/100 - 5.0329/100 - 0.2042/100)*1.06 # in €/kWh
         EstSOC      = $estSoc
         EstUsage    = $EstUsage.power
