@@ -81,7 +81,7 @@ function Get-PowerForecast {
 
 
 function Get-AlphaESSAuthHeaders {
-    $timestamp = [math]::Floor((Get-Date).ToUniversalTime().Subtract((Get-Date "1970-01-01T00:00:00Z")).TotalSeconds)+3600
+    $timestamp = [math]::Floor((Get-Date).ToUniversalTime().Subtract((Get-Date "1970-01-01T00:00:00Z").ToUniversalTime()).TotalSeconds)#+3600
     $signString = "$($AlphaESSSettings.alphaEssAppId)$($AlphaESSSettings.alphaEssApiKey)$timestamp"
     $sha512 = [System.Security.Cryptography.SHA512]::Create()
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($signString)
@@ -107,8 +107,9 @@ function Get-BatteryStatus {
     # Make the request
     try {
         $response = Invoke-RestMethod -Uri $url -Headers $headers
+        $response
     } catch {
-        Write-Error "API call failed: $($_.Exception.Message)"
+       Write-Error "API call failed: $($_.Exception.Message)"
     }
     
     return $response.data.soc
@@ -152,7 +153,7 @@ $prices = Get-EpexPrices
 $soc = Get-BatteryStatus
 $PowerForecast = Get-PowerForecast
 
-
+$soc
 #$lowPriceThreshold = ($prices | Measure-Object -Property Price -Average).Average
 $sortedPrices = $prices | Sort-Object Price | Select-Object -ExpandProperty Price
 $percentileIndex = [math]::Floor($sortedPrices.Count * $AlphaESSControl.lowPriceThresholdPct)
@@ -184,7 +185,10 @@ foreach ($p in $PowerForecast) {
         }
     }
         
-    $estSoc = [math]::Round($soc + ($CummulativePowerBalance/100), 2)
+    #$estSoc = [math]::Round($soc + ($CummulativePowerBalance/100), 2)
+    #$estSoc = [math]::Round($soc + ($CummulativePowerBalance/100), 2, [System.MidpointRounding]::AwayFromZero)
+    $estSoc = $soc + ($CummulativePowerBalance/100)
+
     if ($estSoc -le 4){ $estSoc=4}
     if ($estSoc -ge 100){ $estSoc=100}
         
