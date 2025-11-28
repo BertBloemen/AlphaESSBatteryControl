@@ -9,8 +9,7 @@ if ($env:AZUREPS_HOST_ENVIRONMENT) {
     # CONFIGURATION
     $storageAccountName = "bbphotostorage"
     $containerName = "alphaess"
-    #$resourceGroupName = "AlphaESSControl"
-
+    
     Connect-AzAccount -Identity
 
     # Create a storage context bound to the connected account (Azure AD)
@@ -205,7 +204,7 @@ foreach ($p in $PowerForecast) {
 }
 
 
-$datetime = Get-Date $datetimeCET -Format "dd-MM-yyyy_HHmm"
+$datetime = Get-Date $datetimeCET -Format "yyyy-MM-dd_HHmm"
 $joined | Export-Csv -Path ".\$datetime.csv" -Delimiter ";" -NoTypeInformation
 
 $minSOC = ($joined | Select-Object -First 50 | Measure-Object -Property EstSOC -Minimum).Minimum
