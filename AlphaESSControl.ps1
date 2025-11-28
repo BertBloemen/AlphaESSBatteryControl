@@ -184,10 +184,8 @@ foreach ($p in $PowerForecast) {
         }
     }
         
-    #$estSoc = [math]::Round($soc + ($CummulativePowerBalance/100), 2)
-    #$estSoc = [math]::Round($soc + ($CummulativePowerBalance/100), 2, [System.MidpointRounding]::AwayFromZero)
-    $estSoc = $soc + ($CummulativePowerBalance/100)
-
+    $estSoc = [math]::Round($soc + ($CummulativePowerBalance/100), 2)
+    
     if ($estSoc -le 4){ $estSoc=4}
     if ($estSoc -ge 100){ $estSoc=100}
         
