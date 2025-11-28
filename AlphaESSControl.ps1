@@ -224,6 +224,7 @@ $action >> ./_alphaesslog.txt
 if ($env:AZUREPS_HOST_ENVIRONMENT) { 
     
     Set-AzStorageBlobContent -Context $ctx -Container "alphaesslogs" -File ".\$datetime.csv" -Blob ".\$datetime.csv" -Force
+    Set-AzStorageBlobContent -Context $ctx -Container "alphaesslogs" -File ".\$datetime.csv" -Blob ".\_latest.csv" -Force
 
     # Get a reference to the container
     $container = Get-AzStorageContainer -Name "alphaesslogs" -Context $ctx
