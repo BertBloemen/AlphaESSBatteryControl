@@ -107,7 +107,6 @@ function Get-BatteryStatus {
     # Make the request
     try {
         $response = Invoke-RestMethod -Uri $url -Headers $headers
-        $response
     } catch {
        Write-Error "API call failed: $($_.Exception.Message)"
     }
