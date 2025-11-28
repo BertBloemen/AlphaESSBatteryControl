@@ -23,7 +23,7 @@ jobs:
         id: set-runbook
         run: |
           if [[ "${GITHUB_REF##*/}" == "main" ]]; then
-            echo "runbook=AlphaESSControlGithub" >> $GITHUB_OUTPUT
+            echo "runbook=AlphaESSControl" >> $GITHUB_OUTPUT
           elif [[ "${GITHUB_REF##*/}" == "test" ]]; then
             echo "runbook=AlphaESSControlTest" >> $GITHUB_OUTPUT
           fi
