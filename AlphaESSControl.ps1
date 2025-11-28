@@ -1,4 +1,5 @@
 
+
 # Check if the script is running in Azure Runbook or locally
 if ($env:AZUREPS_HOST_ENVIRONMENT) { 
     
