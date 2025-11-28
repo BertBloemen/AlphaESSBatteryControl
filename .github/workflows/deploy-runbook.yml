@@ -1,0 +1,41 @@
+name: Deploy AlphaESS Runbook
+
+on:
+  push:
+    branches:
+      - main   # deploy on every push to main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          # Store a Service Principal JSON in GitHub Secrets:
+          # {
+          #   "clientId": "...",
+          #   "clientSecret": "...",
+          #   "subscriptionId": "...",
+          #   "tenantId": "..."
+          # }
+
+      - name: Upload Runbook Script
+        run: |
+          az automation runbook replace-content \
+            --resource-group AlphaESSControl \
+            --automation-account-name AlphaESSAutomation \
+            --name AlphaESSControlGithub \
+            --content @AlphaESSControl.ps1
+
+      - name: Publish Runbook
+        run: |
+          az automation runbook publish \
+            --resource-group AlphaESSControl \
+            --automation-account-name AlphaESSAutomation \
+            --name AlphaESSControlGithub
