@@ -3,7 +3,8 @@ name: Deploy AlphaESS Runbook
 on:
   push:
     branches:
-      - main   # deploy on every push to main
+      - main
+      - test
 
 jobs:
   deploy:
@@ -17,20 +18,22 @@ jobs:
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
-          # Store a Service Principal JSON in GitHub Secrets:
-          # {
-          #   "clientId": "...",
-          #   "clientSecret": "...",
-          #   "subscriptionId": "...",
-          #   "tenantId": "..."
-          # }
+
+      - name: Set Runbook Name
+        id: set-runbook
+        run: |
+          if [[ "${GITHUB_REF##*/}" == "main" ]]; then
+            echo "runbook=AlphaESSControlGithub" >> $GITHUB_OUTPUT
+          elif [[ "${GITHUB_REF##*/}" == "test" ]]; then
+            echo "runbook=AlphaESSControlTest" >> $GITHUB_OUTPUT
+          fi
 
       - name: Upload Runbook Script
         run: |
           az automation runbook replace-content \
             --resource-group AlphaESSControl \
             --automation-account-name AlphaESSAutomation \
-            --name AlphaESSControlGithub \
+            --name ${{ steps.set-runbook.outputs.runbook }} \
             --content @AlphaESSControl.ps1
 
       - name: Publish Runbook
@@ -38,4 +41,4 @@ jobs:
           az automation runbook publish \
             --resource-group AlphaESSControl \
             --automation-account-name AlphaESSAutomation \
-            --name AlphaESSControlGithub
+            --name ${{ steps.set-runbook.outputs.runbook }}
