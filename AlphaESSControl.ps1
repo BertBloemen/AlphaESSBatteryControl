@@ -1,5 +1,5 @@
 
-#testbranch
+
 # Check if the script is running in Azure Runbook or locally
 if ($env:AZUREPS_HOST_ENVIRONMENT) { 
     
@@ -152,11 +152,11 @@ $prices = Get-EpexPrices
 $soc = Get-BatteryStatus
 $PowerForecast = Get-PowerForecast
 
-$soc
-#$lowPriceThreshold = ($prices | Measure-Object -Property Price -Average).Average
-$sortedPrices = $prices | Sort-Object Price | Select-Object -ExpandProperty Price
-$percentileIndex = [math]::Floor($sortedPrices.Count * $AlphaESSControl.lowPriceThresholdPct)
-$lowPriceThreshold = $sortedPrices[$percentileIndex]
+
+$lowPriceThreshold = ($prices | Select-Object -first 40 | Measure-Object -Property Price -Average).Average
+#$sortedPrices = $prices | Sort-Object Price | Select-Object -ExpandProperty Price -first 40
+#$percentileIndex = [math]::Floor($sortedPrices.Count * $AlphaESSControl.lowPriceThresholdPct)
+#$lowPriceThreshold = $sortedPrices[$percentileIndex]
 
 
 $avgPrice = ($prices | Measure-Object -Property Price -Average).Average
@@ -208,7 +208,9 @@ foreach ($p in $PowerForecast) {
 $datetime = Get-Date $datetimeCET -Format "yyyy-MM-dd_HHmm"
 $joined | Export-Csv -Path ".\$datetime.csv" -Delimiter ";" -NoTypeInformation
 
-$minSOC = ($joined | Select-Object -First 50 | Measure-Object -Property EstSOC -Minimum).Minimum
+$joined | Select-Object -First 400 | Format-Table -Property *
+
+$minSOC = ($joined | Select-Object -First 40 | Measure-Object -Property EstSOC -Minimum).Minimum
 
 if ($joined[0].ChargeBattFromGrid -and ($minSOC -lt 10)){
     $action = "$datetime - Start opladen, minSoc=$minSOC, price=$($joined[0].Price), price_threshold=$lowPriceThreshold"
