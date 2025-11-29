@@ -91,6 +91,7 @@ function Get-AlphaESSAuthHeaders {
         "appId"     = $AlphaESSSettings.alphaEssAppId
         "timeStamp" = $timestamp
         "sign"      = $sign
+        "Content-Type" = "application/json"
     }
 }
 
