@@ -127,7 +127,7 @@ function ChargeBattery($activate) {
         $roundedMinutes = [math]::Floor($now.Minute / 15) * 15
         $roundedTime = Get-Date $datetimeCET -Hour $now.Hour -Minute $roundedMinutes -Second 0
         $timeStart = $roundedTime.ToString("HH:mm")
-        $timeStop = $roundedTime.AddMinutes(15).ToString("HH:mm")
+        $timeStop = $roundedTime.AddMinutes(30).ToString("HH:mm")
 
         $url = "https://openapi.alphaess.com/api/updateChargeConfigInfo?sysSn=$($AlphaESSSettings.alphaEssSystemId)"
 
