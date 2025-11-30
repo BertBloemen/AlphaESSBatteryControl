@@ -210,7 +210,7 @@ $joined | Export-Csv -Path ".\$datetime.csv" -Delimiter ";" -NoTypeInformation
 
 $joined | Select-Object -First 400 | Format-Table -Property *
 
-$minSOC = ($joined | Select-Object -First 40 | Measure-Object -Property EstSOC -Minimum).Minimum
+$minSOC = ($joined | Select-Object -First 60 | Measure-Object -Property EstSOC -Minimum).Minimum
 
 if ($joined[0].ChargeBattFromGrid -and ($minSOC -lt 10)){
     $action = "$datetime - Start opladen, minSoc=$minSOC, price=$($joined[0].Price), price_threshold=$lowPriceThreshold"
