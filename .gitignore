@@ -1,3 +1,5 @@
 AlphaESSControlConfig.xml
 homeassistant.yaml
+_alphaesslog.txt
+*.csv
 logs/
