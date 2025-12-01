@@ -153,10 +153,10 @@ $soc = Get-BatteryStatus
 $PowerForecast = Get-PowerForecast
 
 
-$lowPriceThreshold = ($prices | Select-Object -first 40 | Measure-Object -Property Price -Average).Average
-#$sortedPrices = $prices | Sort-Object Price | Select-Object -ExpandProperty Price -first 40
-#$percentileIndex = [math]::Floor($sortedPrices.Count * $AlphaESSControl.lowPriceThresholdPct)
-#$lowPriceThreshold = $sortedPrices[$percentileIndex]
+#$lowPriceThreshold = ($prices | Select-Object -first 40 | Measure-Object -Property Price -Average).Average
+$sortedPrices = $prices | Sort-Object Price | Select-Object -ExpandProperty Price -first 40
+$percentileIndex = [math]::Floor($sortedPrices.Count * $AlphaESSControl.lowPriceThresholdPct)
+$lowPriceThreshold = $sortedPrices[$percentileIndex]
 
 
 $avgPrice = ($prices | Measure-Object -Property Price -Average).Average

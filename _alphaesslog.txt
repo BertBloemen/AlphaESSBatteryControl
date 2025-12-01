@@ -25,3 +25,7 @@
 2025-11-29_1415 - Stop opladen, minSoc=4, price=79.5, price_threshold=70.25
 2025-11-29_1416 - Stop opladen, minSoc=4, price=79.5, price_threshold=70.63
 2025-11-29_1417 - Start opladen, minSoc=4, price=79.5, price_threshold=89.31275
+2025-11-30_1522 - Start opladen, minSoc=4, price=82.4, price_threshold=95.34425
+2025-11-30_1522 - Stop opladen, minSoc=4, price=82.4, price_threshold=79.3
+2025-11-30_1523 - Stop opladen, minSoc=4, price=82.4, price_threshold=79.3
+2025-11-30_1524 - Start opladen, minSoc=4, price=82.4, price_threshold=95.34425
