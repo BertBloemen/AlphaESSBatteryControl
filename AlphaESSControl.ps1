@@ -154,16 +154,12 @@ $PowerForecast = Get-PowerForecast
 
 
 #$lowPriceThreshold = ($prices | Select-Object -first 40 | Measure-Object -Property Price -Average).Average
-$sortedPrices = $prices | Sort-Object Price | Select-Object -ExpandProperty Price -first 40
-$percentileIndex = [math]::Floor($sortedPrices.Count * $AlphaESSControl.lowPriceThresholdPct)
-$lowPriceThreshold = $sortedPrices[$percentileIndex]
+#$sortedPrices = $prices | Select-Object -ExpandProperty Price -first 40 | Sort-Object [double]Price 
+#$percentileIndex = [math]::Floor($sortedPrices.Count * $AlphaESSControl.lowPriceThresholdPct)
+#$lowPriceThreshold = $sortedPrices[$percentileIndex]
 
 
-$avgPrice = ($prices | Measure-Object -Property Price -Average).Average
-$minPrice = ($prices | Measure-Object -Property Price -Minimum).Minimum
-$PowerPrediction = ($PowerForecast | where-object {$_.timestamp -lt (get-date $datetimeCET).AddHours(24)} | Measure-Object -Property P_predicted -Sum).Sum /4
-$PowerMax = ($PowerForecast | where-object {$_.timestamp -lt (get-date $datetimeCET).AddHours(24)} | Measure-Object -Property clear_sky -Sum).Sum /4
-
+#$PowerPrediction = ($PowerForecast | where-object {$_.timestamp -lt (get-date $datetimeCET).AddHours(24)} | Measure-Object -Property P_predicted -Sum).Sum /4
 
 $joined = @()
 $CummulativePowerBalance = 0
@@ -172,6 +168,12 @@ $CummulativePowerBalance = 0
 foreach ($p in $PowerForecast) {
 
     $matchingPrice = $prices | Where-Object { $_.Timestamp -eq $p.Timestamp }
+    $matchingPriceAVG = ($prices | Where-Object { $_.Timestamp -ge $p.Timestamp } | Select-Object -First 40 | Measure-Object -Property Price -Average).Average
+    
+    $sortedPrices = $prices | Where-Object { $_.Timestamp -ge $p.Timestamp } | Select-Object -ExpandProperty Price -first 40 | Sort-Object [double]Price 
+    $percentileIndex = [math]::Floor($sortedPrices.Count * $AlphaESSControl.lowPriceThresholdPct)
+    $matchingPricePCT = $sortedPrices[$percentileIndex]
+    
     $EstUsage = $usage | Where-Object { $_.hour -eq (get-date $p.Timestamp -Format "HH:00:00") }
     $EstPowerBalance = $p.P_predicted - $EstUsage.power
     $Price=$matchingPrice.Price
@@ -193,12 +195,16 @@ foreach ($p in $PowerForecast) {
         Timestamp   = $p.Timestamp
         P_predicted = $p.P_predicted
         Price       = $Price # in €/MWh
+        PriceAverage    = $matchingPriceAVG
+        PricePercentile = $matchingPricePCT
         PriceLuminusBuy = (($Price * 0.1018 + 2.1316)/100 + 5.99/100 + 5.0329/100 + 0.2042/100)*1.06 # in €/MWh
         #PriceLuminusSell = ((1000*$Price * 0.1018 - 1.2685)/100 - 5.99/100 - 5.0329/100 - 0.2042/100)*1.06 # in €/kWh
         EstSOC      = $estSoc
         EstUsage    = $EstUsage.power
         EstPowerBalance = $EstPowerBalance
-        ChargeBattFromGrid  = if (($Price -lt $lowPriceThreshold) -and ($p.P_predicted -lt $EstUsage.power)) { $true } else { $false }
+        #ChargeBattFromGrid  = if (($Price -lt $lowPriceThreshold) -and ($p.P_predicted -lt $EstUsage.power)) { $true } else { $false }
+        #ChargeBattFromGridAvg  = if (($Price -lt $matchingPriceAVG) -and ($p.P_predicted -lt $EstUsage.power)) { $true } else { $false }
+        ChargeBattFromGrid = if (($Price -lt $matchingPricePCT) -and ($p.P_predicted -lt $EstUsage.power)) { $true } else { $false }
     }
         
     $joined +=$entry
@@ -251,11 +257,3 @@ if ($env:AZUREPS_HOST_ENVIRONMENT) {
 
 
     
-Write-Host "Current SOC = $soc"
-Write-Host "Current Price = $($joined[0].Price)"
-Write-Host "Avg Price = $avgPrice"
-Write-Host "Min Price = $minPrice"
-Write-Host "Low Price threshold = $lowPriceThreshold"
-Write-Host "Total Power Prediction = $PowerPrediction"
-Write-Host "Total Power Max = $PowerMax"
-     
