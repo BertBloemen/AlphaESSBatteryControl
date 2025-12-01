@@ -168,7 +168,7 @@ $CummulativePowerBalance = 0
 foreach ($p in $PowerForecast) {
 
     $matchingPrice = $prices | Where-Object { $_.Timestamp -eq $p.Timestamp }
-    $matchingPriceAVG = ($prices | Where-Object { $_.Timestamp -ge $p.Timestamp } | Select-Object -First 40 | Measure-Object -Property Price -Average).Average
+    $matchingPriceAVG = [math]::Round(($prices | Where-Object { $_.Timestamp -ge $p.Timestamp } | Select-Object -First 40 | Measure-Object -Property Price -Average).Average,2)
     
     $sortedPrices = $prices | Where-Object { $_.Timestamp -ge $p.Timestamp } | Select-Object -ExpandProperty Price -first 40 | Sort-Object [double]Price 
     $percentileIndex = [math]::Floor($sortedPrices.Count * $AlphaESSControl.lowPriceThresholdPct)
@@ -178,12 +178,18 @@ foreach ($p in $PowerForecast) {
     $EstPowerBalance = $p.P_predicted - $EstUsage.power
     $Price=$matchingPrice.Price
 
+    $ChargeBattFromGrid = if (($Price -lt $matchingPricePCT) -and ($p.P_predicted -lt $EstUsage.power)) { $true } else { $false }
+
     if (($estSoc -gt 4) -and ($estSoc -lt 100)){
         $CummulativePowerBalance += ($EstPowerBalance/4)
     }else{
         if ((($estSoc -ge 100) -and ($EstPowerBalance -lt 0)) -or (($estSoc -le 4) -and ($EstPowerBalance -gt 0))){
             $CummulativePowerBalance += ($EstPowerBalance/4)
         }
+    }
+
+    if (($ChargeBattFromGrid) -and ($estSoc -lt 100)) {
+        $CummulativePowerBalance += ($AlphaESSControl.maxPowerFromGrid/4 - $EstUsage.power/4)
     }
         
     $estSoc = [math]::Round($soc + ($CummulativePowerBalance/100), 2)
@@ -192,19 +198,19 @@ foreach ($p in $PowerForecast) {
     if ($estSoc -ge 100){ $estSoc=100}
         
     $entry = [PSCustomObject]@{
-        Timestamp   = $p.Timestamp
-        P_predicted = $p.P_predicted
-        Price       = $Price # in €/MWh
+        Timestamp       = $p.Timestamp
+        P_predicted     = $p.P_predicted
+        Price           = $Price # in €/MWh
         PriceAverage    = $matchingPriceAVG
         PricePercentile = $matchingPricePCT
         PriceLuminusBuy = (($Price * 0.1018 + 2.1316)/100 + 5.99/100 + 5.0329/100 + 0.2042/100)*1.06 # in €/MWh
         #PriceLuminusSell = ((1000*$Price * 0.1018 - 1.2685)/100 - 5.99/100 - 5.0329/100 - 0.2042/100)*1.06 # in €/kWh
-        EstSOC      = $estSoc
-        EstUsage    = $EstUsage.power
+        EstSOC          = $estSoc
+        EstUsage        = $EstUsage.power
         EstPowerBalance = $EstPowerBalance
         #ChargeBattFromGrid  = if (($Price -lt $lowPriceThreshold) -and ($p.P_predicted -lt $EstUsage.power)) { $true } else { $false }
         #ChargeBattFromGridAvg  = if (($Price -lt $matchingPriceAVG) -and ($p.P_predicted -lt $EstUsage.power)) { $true } else { $false }
-        ChargeBattFromGrid = if (($Price -lt $matchingPricePCT) -and ($p.P_predicted -lt $EstUsage.power)) { $true } else { $false }
+        ChargeBattFromGrid = $ChargeBattFromGrid #if (($Price -lt $matchingPricePCT) -and ($p.P_predicted -lt $EstUsage.power)) { $true } else { $false }
     }
         
     $joined +=$entry
@@ -235,10 +241,7 @@ if ($env:AZUREPS_HOST_ENVIRONMENT) {
     Set-AzStorageBlobContent -Context $ctx -Container "alphaesslogs" -File ".\$datetime.csv" -Blob ".\$datetime.csv" -Force
     Set-AzStorageBlobContent -Context $ctx -Container "alphaesslogs" -File ".\$datetime.csv" -Blob ".\_latest.csv" -Force
 
-    # Get a reference to the container
     $container = Get-AzStorageContainer -Name "alphaesslogs" -Context $ctx
-
-    # Get a reference to the append blob
     $appendBlob = $container.CloudBlobContainer.GetAppendBlobReference("_alphaesslog.txt")
 
     # Create the blob if it doesn't exist yet
