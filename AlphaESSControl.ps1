@@ -187,11 +187,11 @@ foreach ($p in $PowerForecast) {
             $CummulativePowerBalance += ($EstPowerBalance/4)
         }
     }
-
+<#
     if (($ChargeBattFromGrid) -and ($estSoc -lt 100)) {
         $CummulativePowerBalance += ($AlphaESSControl.maxPowerFromGrid/4 - $EstUsage.power/4)
     }
-        
+  #>      
     $estSoc = [math]::Round($soc + ($CummulativePowerBalance/100), 2)
     
     if ($estSoc -le 4){ $estSoc=4}
