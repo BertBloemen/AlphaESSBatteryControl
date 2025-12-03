@@ -187,11 +187,7 @@ foreach ($p in $PowerForecast) {
             $CummulativePowerBalance += ($EstPowerBalance/4)
         }
     }
-<#
-    if (($ChargeBattFromGrid) -and ($estSoc -lt 100)) {
-        $CummulativePowerBalance += ($AlphaESSControl.maxPowerFromGrid/4 - $EstUsage.power/4)
-    }
-  #>      
+
     $estSoc = [math]::Round($soc + ($CummulativePowerBalance/100), 2)
     
     if ($estSoc -le 4){ $estSoc=4}
@@ -211,8 +207,10 @@ foreach ($p in $PowerForecast) {
         #ChargeBattFromGrid  = if (($Price -lt $lowPriceThreshold) -and ($p.P_predicted -lt $EstUsage.power)) { $true } else { $false }
         #ChargeBattFromGridAvg  = if (($Price -lt $matchingPriceAVG) -and ($p.P_predicted -lt $EstUsage.power)) { $true } else { $false }
         ChargeBattFromGrid = $ChargeBattFromGrid #if (($Price -lt $matchingPricePCT) -and ($p.P_predicted -lt $EstUsage.power)) { $true } else { $false }
+        ChargeBattFromGrid100 = if ($ChargeBattFromGrid){100}else{0}
     }
-        
+    
+    
     $joined +=$entry
 }
 
@@ -225,10 +223,10 @@ $joined | Select-Object -First 400 | Format-Table -Property *
 $minSOC = ($joined | Select-Object -First 60 | Measure-Object -Property EstSOC -Minimum).Minimum
 
 if ($joined[0].ChargeBattFromGrid -and ($minSOC -lt 10)){
-    $action = "$datetime - Start opladen, minSoc=$minSOC, price=$($joined[0].Price), price_threshold=$joined[0].PricePercentile"
+    $action = "$datetime - Start opladen, minSoc=$minSOC, price=$($joined[0].Price), price_threshold=$($joined[0].PricePercentile)"
     ChargeBattery($true)
 }else{
-    $action = "$datetime - Stop opladen, minSoc=$minSOC, price=$($joined[0].Price), price_threshold=$joined[0].PricePercentile"
+    $action = "$datetime - Stop opladen, minSoc=$minSOC, price=$($joined[0].Price), price_threshold=$($joined[0].PricePercentile)"
     ChargeBattery($false)
 }
 
