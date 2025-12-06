@@ -51,7 +51,12 @@ function Get-EpexPrices {
     $prices += ((Invoke-WebRequest -UseBasicParsing -Uri "https://dataportal-api.nordpoolgroup.com/api/DayAheadPrices?market=DayAhead&deliveryArea=BE&currency=EUR&date=$tomorrow").content | ConvertFrom-Json).multiAreaEntries
     
     $prices = $prices | Select-Object deliveryStart, @{Name="Timestamp";Expression={[System.TimeZoneInfo]::ConvertTimeFromUtc((get-date ($_.deliveryStart)), $cetZone)}}, @{Name="Price";Expression={($_.entryPerArea.BE)}} | Where-Object {($_.timestamp -ge (get-date $datetimeCET).AddHours(-1))} | Select-Object Timestamp,Price
-    
+            
+    <#
+    $prices = $prices | Select-Object deliveryStart, @{Name="Timestamp";Expression={[System.TimeZoneInfo]::ConvertTimeFromUtc((get-date ($_.deliveryStart)), $cetZone)}}, @{Name="Price";Expression={($_.entryPerArea.BE)}} | Select-Object Timestamp,Price
+    $prices | Group-Object { $_.Timestamp.ToString('yyyy-MM-dd HH') } | ForEach-Object { $avg = ($_.Group.Price -replace ',', '.' | % {[double]$_} | Measure-Object -Average).Average; $_.Group | ForEach-Object { $_.Price = "{0:N2}" -f $avg } }
+    $prices = $prices | Where-Object { $_.Timestamp -ge (get-date $datetimeCET).AddHours(-1) } | Select-Object Timestamp, Price
+    #>
     return $prices
     
 }
@@ -132,9 +137,9 @@ function ChargeBattery($activate) {
         $url = "https://openapi.alphaess.com/api/updateChargeConfigInfo?sysSn=$($AlphaESSSettings.alphaEssSystemId)"
 
         if ($activate){
-            $body = @{ "sysSn" = "$($AlphaESSSettings.alphaEssSystemId)"; "gridChargePower" = $($AlphaESSControl.maxPowerFromGrid); "batHighCap" = $($AlphaESSControl.maxBatterySoC); "gridCharge" = 1 ; "timeChaf1" = $timeStart; "timeChaf2" = "00:00"; "timeChae1" = $timeStop; "timeChae2" = "00:00" } | ConvertTo-Json
+            $body = @{ "sysSn" = "$($AlphaESSSettings.alphaEssSystemId)"; "gridChargePower" = $($AlphaESSControl.maxPowerFromGrid); "batHighCap" = 100; "gridCharge" = 1 ; "timeChaf1" = $timeStart; "timeChaf2" = "00:00"; "timeChae1" = $timeStop; "timeChae2" = "00:00" } | ConvertTo-Json
         }else{
-            $body = @{ "sysSn" = "$($AlphaESSSettings.alphaEssSystemId)"; "gridChargePower" = $($AlphaESSControl.maxPowerFromGrid); "batHighCap" = $($AlphaESSControl.maxBatterySoC); "gridCharge" = 0 ; "timeChaf1" = "00:00"; "timeChaf2" = "00:00"; "timeChae1" = "00:00"; "timeChae2" = "00:00" } | ConvertTo-Json
+            $body = @{ "sysSn" = "$($AlphaESSSettings.alphaEssSystemId)"; "gridChargePower" = $($AlphaESSControl.maxPowerFromGrid); "batHighCap" = 100; "gridCharge" = 0 ; "timeChaf1" = "00:00"; "timeChaf2" = "00:00"; "timeChae1" = "00:00"; "timeChae2" = "00:00" } | ConvertTo-Json
         }
         $out = Invoke-RestMethod -Uri $url -Headers $headers -Body $body -Method POST
 
@@ -151,15 +156,6 @@ function ChargeBattery($activate) {
 $prices = Get-EpexPrices
 $soc = Get-BatteryStatus
 $PowerForecast = Get-PowerForecast
-
-
-#$lowPriceThreshold = ($prices | Select-Object -first 40 | Measure-Object -Property Price -Average).Average
-#$sortedPrices = $prices | Select-Object -ExpandProperty Price -first 40 | Sort-Object [double]Price 
-#$percentileIndex = [math]::Floor($sortedPrices.Count * $AlphaESSControl.lowPriceThresholdPct)
-#$lowPriceThreshold = $sortedPrices[$percentileIndex]
-
-
-#$PowerPrediction = ($PowerForecast | where-object {$_.timestamp -lt (get-date $datetimeCET).AddHours(24)} | Measure-Object -Property P_predicted -Sum).Sum /4
 
 $joined = @()
 $CummulativePowerBalance = 0
@@ -179,6 +175,7 @@ foreach ($p in $PowerForecast) {
     $Price=$matchingPrice.Price
 
     $ChargeBattFromGrid = if (($Price -lt $matchingPricePCT) -and ($p.P_predicted -lt $EstUsage.power)) { $true } else { $false }
+
 
     if (($estSoc -gt 4) -and ($estSoc -lt 100)){
         $CummulativePowerBalance += ($EstPowerBalance/4)
@@ -222,11 +219,11 @@ $joined | Select-Object -First 400 | Format-Table -Property *
 
 $minSOC = ($joined | Select-Object -First 60 | Measure-Object -Property EstSOC -Minimum).Minimum
 
-if ($joined[0].ChargeBattFromGrid -and ($minSOC -lt 10)){
-    $action = "$datetime - Start opladen, minSoc=$minSOC, price=$($joined[0].Price), price_threshold=$($joined[0].PricePercentile)"
+if ($joined[0].ChargeBattFromGrid -and ($minSOC -lt 10) -and ($soc -le $($AlphaESSControl.maxBatterySoC))){
+    $action = "$datetime - Start opladen, minSoc=$minSOC, currentSoc=$SOC, price=$($joined[0].Price), price_threshold=$($joined[0].PricePercentile)"
     ChargeBattery($true)
 }else{
-    $action = "$datetime - Stop opladen, minSoc=$minSOC, price=$($joined[0].Price), price_threshold=$($joined[0].PricePercentile)"
+    $action = "$datetime - Stop opladen, minSoc=$minSOC, currentSoc=$SOC, price=$($joined[0].Price), price_threshold=$($joined[0].PricePercentile)"
     ChargeBattery($false)
 }
 
