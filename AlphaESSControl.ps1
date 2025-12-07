@@ -166,7 +166,7 @@ $CummulativePowerBalance = 0
 
 foreach ($p in $PowerForecast) {
 
-    $matchingPrice = $prices | Where-Object { $_.Timestamp -eq $p.Timestamp }
+    $Price = ($prices | Where-Object { $_.Timestamp -eq $p.Timestamp }).Price
     $matchingPriceAVG = [math]::Round(($prices | Where-Object { $_.Timestamp -ge $p.Timestamp } | Select-Object -First 40 | Measure-Object -Property Price -Average).Average,2)
     
     $sortedPrices = $prices | Where-Object { $_.Timestamp -ge $p.Timestamp } | Select-Object -ExpandProperty Price -first 40 | Sort-Object Price 
@@ -177,10 +177,8 @@ foreach ($p in $PowerForecast) {
     
     $EstUsage = $usage | Where-Object { $_.hour -eq (get-date $p.Timestamp -Format "HH:00:00") }
     $EstPowerBalance = $p.P_predicted - $EstUsage.power
-    $Price=$matchingPrice.Price
-
+    
     $ChargeBattFromGrid = if (($Price -lt $matchingPricePCT) -and ($p.P_predicted -lt $EstUsage.power)) { $true } else { $false }
-
 
     if (($estSoc -gt 4) -and ($estSoc -lt 100)){
         $CummulativePowerBalance += ($EstPowerBalance/4)
@@ -206,8 +204,6 @@ foreach ($p in $PowerForecast) {
         EstSOC          = $estSoc
         EstUsage        = $EstUsage.power
         EstPowerBalance = $EstPowerBalance
-        #ChargeBattFromGrid  = if (($Price -lt $lowPriceThreshold) -and ($p.P_predicted -lt $EstUsage.power)) { $true } else { $false }
-        #ChargeBattFromGridAvg  = if (($Price -lt $matchingPriceAVG) -and ($p.P_predicted -lt $EstUsage.power)) { $true } else { $false }
         ChargeBattFromGrid = $ChargeBattFromGrid #if (($Price -lt $matchingPricePCT) -and ($p.P_predicted -lt $EstUsage.power)) { $true } else { $false }
         ChargeBattFromGrid100 = if ($ChargeBattFromGrid){100}else{0}
     }
@@ -219,21 +215,22 @@ foreach ($p in $PowerForecast) {
 
 $datetime = Get-Date $datetimeCET -Format "yyyy-MM-dd_HHmm"
 $joined | Export-Csv -Path ".\$datetime.csv" -Delimiter ";" -NoTypeInformation
-
 $joined | Select-Object -First 400 | Format-Table -Property *
+
+$Current = $joined[0]
 
 $minSOC = ($joined | Select-Object -First 60 | Measure-Object -Property EstSOC -Minimum).Minimum
 
-if ($joined[0].ChargeBattFromGrid -and ($minSOC -lt 10) -and ($soc -le $($AlphaESSControl.maxBatterySoC))){
-    $action = "$datetime - Start opladen, minSoc=$minSOC, currentSoc=$SOC, price=$($joined[0].Price), price_threshold=$($joined[0].PricePercentile)"
+if ($Current.ChargeBattFromGrid -and ($minSOC -lt 10) -and ($soc -le $($AlphaESSControl.maxBatterySoC))){
+    $action = "$($Current.Timestamp);100;$minSOC;$SOC;$($Current.Price);$($Current.PricePercentile);$($Current.P_predicted);$($Current.EstUsage)"
     ChargeBattery($true)
 }else{
-    $action = "$datetime - Stop opladen, minSoc=$minSOC, currentSoc=$SOC, price=$($joined[0].Price), price_threshold=$($joined[0].PricePercentile)"
+    $action = "$($Current.Timestamp);000;$minSOC;$SOC;$($Current.Price);$($Current.PricePercentile);$($Current.P_predicted);$($Current.EstUsage)"
     ChargeBattery($false)
 }
 
 $action
-$action >> ./_alphaesslog.txt
+$action >> ./_alphaesslog2.txt
 
 
 if ($env:AZUREPS_HOST_ENVIRONMENT) { 
@@ -242,11 +239,12 @@ if ($env:AZUREPS_HOST_ENVIRONMENT) {
     Set-AzStorageBlobContent -Context $ctx -Container "alphaesslogs" -File ".\$datetime.csv" -Blob ".\_latest.csv" -Force
 
     $container = Get-AzStorageContainer -Name "alphaesslogs" -Context $ctx
-    $appendBlob = $container.CloudBlobContainer.GetAppendBlobReference("_alphaesslog.txt")
+    $appendBlob = $container.CloudBlobContainer.GetAppendBlobReference("_alphaesslog2.txt")
 
-    # Create the blob if it doesn't exist yet
-    #$appendBlob.CreateOrReplace()
-
+    if (-not $appendBlob) {
+        $appendBlob.CreateOrReplace()
+    }
+        
     # Prepare text
     $line = "$($Action)`r`n"
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($line)
