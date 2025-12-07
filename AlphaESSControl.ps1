@@ -31,6 +31,7 @@ $usage = Import-Csv ".\usage.txt" -Delimiter ","
 
 $AlphaESSControl = $AlphaESSControlConfig.AlphaESSControlConfig.controlSettings
 $AlphaESSSettings = $AlphaESSControlConfig.AlphaESSControlConfig.alphaEssSettings
+$HAWebhook = $AlphaESSControlConfig.AlphaESSControlConfig.homeAssistantSettings.homeAssistantWebhook
 $PVsettings = $AlphaESSControlConfig.AlphaESSControlConfig.PVSettings
 
 $utcNow = (Get-Date).ToUniversalTime()
@@ -218,19 +219,35 @@ $joined | Export-Csv -Path ".\$datetime.csv" -Delimiter ";" -NoTypeInformation
 $joined | Select-Object -First 400 | Format-Table -Property *
 
 $Current = $joined[0]
-
 $minSOC = ($joined | Select-Object -First 60 | Measure-Object -Property EstSOC -Minimum).Minimum
 
-if ($Current.ChargeBattFromGrid -and ($minSOC -lt 10) -and ($soc -le $($AlphaESSControl.maxBatterySoC))){
-    $action = "$($Current.Timestamp);100;$minSOC;$SOC;$($Current.Price);$($Current.PricePercentile);$($Current.P_predicted);$($Current.EstUsage)"
-    ChargeBattery($true)
-}else{
-    $action = "$($Current.Timestamp);000;$minSOC;$SOC;$($Current.Price);$($Current.PricePercentile);$($Current.P_predicted);$($Current.EstUsage)"
-    ChargeBattery($false)
+$chargeNow = if ($Current.ChargeBattFromGrid -and ($minSOC -lt 10) -and ($soc -le $($AlphaESSControl.maxBatterySoC))) {$true} else {$false}
+$chargeNow100 = if ($chargeNow){100}else{0}
+
+$ActionObj = [PSCustomObject]@{
+    Timestamp       = $Current.Timestamp
+    EstimatedPower  = $Current.P_predicted
+    CurrentPrice    = $Current.Price
+    ThresholdPrice  = $Current.PricePercentile
+    LowestSOC       = $minSOC
+    CurrentSOC      = $soc
+    EstimatedUsage  = $Current.EstUsage
+    Charge          = $chargeNow
+    Charge100       = $chargeNow100
 }
 
-$action
+$ActionObj
+
+
+$action = "$($Current.Timestamp);$chargeNow100;$minSOC;$SOC;$($Current.Price);$($Current.PricePercentile);$($Current.P_predicted);$($Current.EstUsage)"
 $action >> ./_alphaesslog2.txt
+
+ChargeBattery($chargeNow)
+
+if ($HAWebhook){
+    $HAjson = $actionObj | ConvertTo-Json
+    Invoke-RestMethod -Uri $HAWebhook -Method Post -Body $HAjson -ContentType "application/json"
+}
 
 
 if ($env:AZUREPS_HOST_ENVIRONMENT) { 
@@ -240,13 +257,10 @@ if ($env:AZUREPS_HOST_ENVIRONMENT) {
 
     $container = Get-AzStorageContainer -Name "alphaesslogs" -Context $ctx
     $appendBlob = $container.CloudBlobContainer.GetAppendBlobReference("_alphaesslog2.txt")
+    
+    # Ensure the append blob exists (create only if missing)
+    $appendBlob.CreateIfNotExists()
 
-    <#
-    if (-not $appendBlob) {
-        $appendBlob.CreateOrReplace()
-    }
-        #>
-        
     # Prepare text
     $line = "$($Action)`r`n"
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($line)
