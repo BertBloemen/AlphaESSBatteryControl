@@ -241,9 +241,11 @@ if ($env:AZUREPS_HOST_ENVIRONMENT) {
     $container = Get-AzStorageContainer -Name "alphaesslogs" -Context $ctx
     $appendBlob = $container.CloudBlobContainer.GetAppendBlobReference("_alphaesslog2.txt")
 
+    <#
     if (-not $appendBlob) {
         $appendBlob.CreateOrReplace()
     }
+        #>
         
     # Prepare text
     $line = "$($Action)`r`n"
