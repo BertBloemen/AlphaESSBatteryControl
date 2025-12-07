@@ -51,10 +51,13 @@ function Get-EpexPrices {
     $prices += ((Invoke-WebRequest -UseBasicParsing -Uri "https://dataportal-api.nordpoolgroup.com/api/DayAheadPrices?market=DayAhead&deliveryArea=BE&currency=EUR&date=$tomorrow").content | ConvertFrom-Json).multiAreaEntries
     
     $prices = $prices | Select-Object deliveryStart, @{Name="Timestamp";Expression={[System.TimeZoneInfo]::ConvertTimeFromUtc((get-date ($_.deliveryStart)), $cetZone)}}, @{Name="Price";Expression={($_.entryPerArea.BE)}} | Where-Object {($_.timestamp -ge (get-date $datetimeCET).AddHours(-1))} | Select-Object Timestamp,Price
-            
     <#
     $prices = $prices | Select-Object deliveryStart, @{Name="Timestamp";Expression={[System.TimeZoneInfo]::ConvertTimeFromUtc((get-date ($_.deliveryStart)), $cetZone)}}, @{Name="Price";Expression={($_.entryPerArea.BE)}} | Select-Object Timestamp,Price
-    $prices | Group-Object { $_.Timestamp.ToString('yyyy-MM-dd HH') } | ForEach-Object { $avg = ($_.Group.Price -replace ',', '.' | % {[double]$_} | Measure-Object -Average).Average; $_.Group | ForEach-Object { $_.Price = "{0:N2}" -f $avg } }
+    $prices | Group-Object { $_.Timestamp.ToString('yyyy-MM-dd HH') } | ForEach-Object {
+        $avg = [math]::Round(($_.Group.Price -replace ',', '.' | ForEach-Object {[double]$_} | Measure-Object -Average).Average,2)
+        $_.Group | ForEach-Object { $_.Price = $avg }
+    }
+
     $prices = $prices | Where-Object { $_.Timestamp -ge (get-date $datetimeCET).AddHours(-1) } | Select-Object Timestamp, Price
     #>
     return $prices
@@ -141,7 +144,7 @@ function ChargeBattery($activate) {
         }else{
             $body = @{ "sysSn" = "$($AlphaESSSettings.alphaEssSystemId)"; "gridChargePower" = $($AlphaESSControl.maxPowerFromGrid); "batHighCap" = 100; "gridCharge" = 0 ; "timeChaf1" = "00:00"; "timeChaf2" = "00:00"; "timeChae1" = "00:00"; "timeChae2" = "00:00" } | ConvertTo-Json
         }
-        $out = Invoke-RestMethod -Uri $url -Headers $headers -Body $body -Method POST
+        #$out = Invoke-RestMethod -Uri $url -Headers $headers -Body $body -Method POST
 
     } catch {
         Write-Error "API call failed: $($_.Exception.Message)"
@@ -166,9 +169,11 @@ foreach ($p in $PowerForecast) {
     $matchingPrice = $prices | Where-Object { $_.Timestamp -eq $p.Timestamp }
     $matchingPriceAVG = [math]::Round(($prices | Where-Object { $_.Timestamp -ge $p.Timestamp } | Select-Object -First 40 | Measure-Object -Property Price -Average).Average,2)
     
-    $sortedPrices = $prices | Where-Object { $_.Timestamp -ge $p.Timestamp } | Select-Object -ExpandProperty Price -first 40 | Sort-Object [double]Price 
+    $sortedPrices = $prices | Where-Object { $_.Timestamp -ge $p.Timestamp } | Select-Object -ExpandProperty Price -first 40 | Sort-Object Price 
     $percentileIndex = [math]::Floor($sortedPrices.Count * $AlphaESSControl.lowPriceThresholdPct)
-    $matchingPricePCT = $sortedPrices[$percentileIndex]
+    try{
+        $matchingPricePCT = $sortedPrices[$percentileIndex]
+    }catch{}
     
     $EstUsage = $usage | Where-Object { $_.hour -eq (get-date $p.Timestamp -Format "HH:00:00") }
     $EstPowerBalance = $p.P_predicted - $EstUsage.power
