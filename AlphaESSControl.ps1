@@ -144,7 +144,7 @@ function ChargeBattery($activate) {
         }else{
             $body = @{ "sysSn" = "$($AlphaESSSettings.alphaEssSystemId)"; "gridChargePower" = $($AlphaESSControl.maxPowerFromGrid); "batHighCap" = 100; "gridCharge" = 0 ; "timeChaf1" = "00:00"; "timeChaf2" = "00:00"; "timeChae1" = "00:00"; "timeChae2" = "00:00" } | ConvertTo-Json
         }
-        #$out = Invoke-RestMethod -Uri $url -Headers $headers -Body $body -Method POST
+        $out = Invoke-RestMethod -Uri $url -Headers $headers -Body $body -Method POST
 
     } catch {
         Write-Error "API call failed: $($_.Exception.Message)"
