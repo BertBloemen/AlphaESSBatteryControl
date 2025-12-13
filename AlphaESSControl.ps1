@@ -226,6 +226,7 @@ $ActionObj = [PSCustomObject]@{
     CurrentPrice    = $Current.Price
     ThresholdPrice  = $Current.PricePercentile
     LowestSOC       = $minPredictedSOC
+    HighestSOC      = $maxPredictedSOC
     CurrentSOC      = $soc
     EstimatedUsage  = $Current.EstUsage
     Charge          = $chargeNow
