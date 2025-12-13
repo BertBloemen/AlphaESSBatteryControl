@@ -51,17 +51,16 @@ function Get-EpexPrices {
     $prices = ((Invoke-WebRequest -UseBasicParsing -Uri "https://dataportal-api.nordpoolgroup.com/api/DayAheadPrices?market=DayAhead&deliveryArea=BE&currency=EUR&date=$today").content | ConvertFrom-Json).multiAreaEntries
     $prices += ((Invoke-WebRequest -UseBasicParsing -Uri "https://dataportal-api.nordpoolgroup.com/api/DayAheadPrices?market=DayAhead&deliveryArea=BE&currency=EUR&date=$tomorrow").content | ConvertFrom-Json).multiAreaEntries
     
-    $prices = $prices | Select-Object deliveryStart, @{Name="Timestamp";Expression={[System.TimeZoneInfo]::ConvertTimeFromUtc((get-date ($_.deliveryStart)), $cetZone)}}, @{Name="Price";Expression={($_.entryPerArea.BE)}} | Where-Object {($_.timestamp -ge (get-date $datetimeCET).AddHours(-1))} | Select-Object Timestamp,Price
-    <#
-    $prices = $prices | Select-Object deliveryStart, @{Name="Timestamp";Expression={[System.TimeZoneInfo]::ConvertTimeFromUtc((get-date ($_.deliveryStart)), $cetZone)}}, @{Name="Price";Expression={($_.entryPerArea.BE)}} | Select-Object Timestamp,Price
-    $prices | Group-Object { $_.Timestamp.ToString('yyyy-MM-dd HH') } | ForEach-Object {
+    $pricesQ = $prices | Select-Object deliveryStart, @{Name="Timestamp";Expression={[System.TimeZoneInfo]::ConvertTimeFromUtc((get-date ($_.deliveryStart)), $cetZone)}}, @{Name="Price";Expression={($_.entryPerArea.BE)}} | Where-Object {($_.timestamp -ge (get-date $datetimeCET).AddHours(-1))} | Select-Object Timestamp,Price
+    <##
+    $pricesH = $prices | Select-Object deliveryStart, @{Name="Timestamp";Expression={[System.TimeZoneInfo]::ConvertTimeFromUtc((get-date ($_.deliveryStart)), $cetZone)}}, @{Name="Price";Expression={($_.entryPerArea.BE)}} | Select-Object Timestamp,Price
+    $pricesH | Group-Object { $_.Timestamp.ToString('yyyy-MM-dd HH') } | ForEach-Object {
         $avg = [math]::Round(($_.Group.Price -replace ',', '.' | ForEach-Object {[double]$_} | Measure-Object -Average).Average,2)
         $_.Group | ForEach-Object { $_.Price = $avg }
     }
-
-    $prices = $prices | Where-Object { $_.Timestamp -ge (get-date $datetimeCET).AddHours(-1) } | Select-Object Timestamp, Price
-    #>
-    return $prices
+    $pricesH = $prices | Where-Object { $_.Timestamp -ge (get-date $datetimeCET).AddHours(-1) } | Select-Object Timestamp, Price
+    ###>
+    return $pricesQ
     
 }
 
@@ -78,6 +77,8 @@ function Get-PowerForecast {
         wattInvertor = [int]$PVsettings.WattInvertor
         timezone = $PVsettings.timezone
     } | ConvertTo-Json -Depth 3
+
+    $openmeteo = Invoke-RestMethod -Uri "https://api.open-meteo.com/v1/forecast?latitude=51.2205&longitude=4.4003&hourly=cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,rain,showers,snowfall&timezone=Europe%2FBerlin&forecast_days=2"
 
     $response = Invoke-RestMethod -Uri "https://api.solar-forecast.org/forecast?provider=openmeteo" -Method POST -Body $body -ContentType "application/json" -UseBasicParsing
     $prediction = $response | Select-Object * , @{Name="TimeStamp";Expression={([System.DateTimeOffset]::FromUnixTimeSeconds($_.dt).ToLocalTime().DateTime)}} | where-object { ($_.timestamp -ge (Get-Date $datetimeCET).AddMinutes(-14)) -and  ($_.timestamp -lt (Get-Date $datetimeCET).Date.AddDays(2))  }
@@ -219,9 +220,10 @@ $joined | Export-Csv -Path ".\$datetime.csv" -Delimiter ";" -NoTypeInformation
 $joined | Select-Object -First 400 | Format-Table -Property *
 
 $Current = $joined[0]
-$minSOC = ($joined | Select-Object -First 60 | Measure-Object -Property EstSOC -Minimum).Minimum
+$minPredictedSOC = ($joined | Select-Object -First 40 | Measure-Object -Property EstSOC -Minimum).Minimum
+$maxPredictedSOC = ($joined | Select-Object -First 40 | Measure-Object -Property EstSOC -Maximum).Maximum
 
-$chargeNow = if ($Current.ChargeBattFromGrid -and ($minSOC -lt 10) -and ($soc -le $($AlphaESSControl.maxBatterySoC))) {$true} else {$false}
+$chargeNow = if ($Current.ChargeBattFromGrid -and ($maxPredictedSOC -lt 100) -and ($soc -le $($AlphaESSControl.maxBatterySoC))) {$true} else {$false}
 $chargeNow100 = if ($chargeNow){100}else{0}
 
 $ActionObj = [PSCustomObject]@{
@@ -229,7 +231,7 @@ $ActionObj = [PSCustomObject]@{
     EstimatedPower  = $Current.P_predicted
     CurrentPrice    = $Current.Price
     ThresholdPrice  = $Current.PricePercentile
-    LowestSOC       = $minSOC
+    LowestSOC       = $minPredictedSOC
     CurrentSOC      = $soc
     EstimatedUsage  = $Current.EstUsage
     Charge          = $chargeNow
@@ -239,7 +241,7 @@ $ActionObj = [PSCustomObject]@{
 $ActionObj
 
 
-$action = "$($Current.Timestamp);$chargeNow100;$minSOC;$SOC;$($Current.Price);$($Current.PricePercentile);$($Current.P_predicted);$($Current.EstUsage)"
+$action = "$($Current.Timestamp);$chargeNow100;$minPredictedSOC;$SOC;$($Current.Price);$($Current.PricePercentile);$($Current.P_predicted);$($Current.EstUsage)"
 $action >> ./_alphaesslog2.txt
 
 ChargeBattery($chargeNow)
