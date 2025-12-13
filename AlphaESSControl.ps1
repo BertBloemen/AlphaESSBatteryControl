@@ -178,16 +178,10 @@ foreach ($p in $PowerForecast) {
     $EstUsage = $usage | Where-Object { $_.hour -eq (get-date $p.Timestamp -Format "HH:00:00") }
     $EstPowerBalance = $p.P_predicted - $EstUsage.power
     
-    #$ChargeBattFromGrid = if (($Price -lt $matchingPricePCT) -and ($p.P_predicted -lt $EstUsage.power)) { $true } else { $false }
     $ChargeBattFromGrid = if ($Price -lt $matchingPricePCT)  { $true } else { $false }
 
-
-    if (($estSoc -gt 4) -and ($estSoc -lt 100)){
+    if ((($estSoc -gt 4) -and ($estSoc -lt 100)) -or (($estSoc -ge 100) -and ($EstPowerBalance -lt 0)) -or (($estSoc -le 4) -and ($EstPowerBalance -gt 0))){
         $CummulativePowerBalance += ($EstPowerBalance/4)
-    }else{
-        if ((($estSoc -ge 100) -and ($EstPowerBalance -lt 0)) -or (($estSoc -le 4) -and ($EstPowerBalance -gt 0))){
-            $CummulativePowerBalance += ($EstPowerBalance/4)
-        }
     }
 
     $estSoc = [math]::Round($soc + ($CummulativePowerBalance/100), 2)
