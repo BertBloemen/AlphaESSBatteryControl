@@ -78,8 +78,6 @@ function Get-PowerForecast {
         timezone = $PVsettings.timezone
     } | ConvertTo-Json -Depth 3
 
-    $openmeteo = Invoke-RestMethod -Uri "https://api.open-meteo.com/v1/forecast?latitude=51.2205&longitude=4.4003&hourly=cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,rain,showers,snowfall&timezone=Europe%2FBerlin&forecast_days=2"
-
     $response = Invoke-RestMethod -Uri "https://api.solar-forecast.org/forecast?provider=openmeteo" -Method POST -Body $body -ContentType "application/json" -UseBasicParsing
     $prediction = $response | Select-Object * , @{Name="TimeStamp";Expression={([System.DateTimeOffset]::FromUnixTimeSeconds($_.dt).ToLocalTime().DateTime)}} | where-object { ($_.timestamp -ge (Get-Date $datetimeCET).AddMinutes(-14)) -and  ($_.timestamp -lt (Get-Date $datetimeCET).Date.AddDays(2))  }
     return $prediction | Select-Object -Property Timestamp, P_predicted, clear_sky, clouds_all
@@ -180,7 +178,9 @@ foreach ($p in $PowerForecast) {
     $EstUsage = $usage | Where-Object { $_.hour -eq (get-date $p.Timestamp -Format "HH:00:00") }
     $EstPowerBalance = $p.P_predicted - $EstUsage.power
     
-    $ChargeBattFromGrid = if (($Price -lt $matchingPricePCT) -and ($p.P_predicted -lt $EstUsage.power)) { $true } else { $false }
+    #$ChargeBattFromGrid = if (($Price -lt $matchingPricePCT) -and ($p.P_predicted -lt $EstUsage.power)) { $true } else { $false }
+    $ChargeBattFromGrid = if ($Price -lt $matchingPricePCT)  { $true } else { $false }
+
 
     if (($estSoc -gt 4) -and ($estSoc -lt 100)){
         $CummulativePowerBalance += ($EstPowerBalance/4)
