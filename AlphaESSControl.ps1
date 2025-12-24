@@ -64,6 +64,122 @@ function Get-EpexPrices {
     
 }
 
+
+function Get-CloudAttenuation {
+    param(
+        [double]$low,  # 0..1
+        [double]$mid,  # 0..1
+        [double]$high  # 0..1
+    )
+    # Weighted cloud index: low clouds typically attenuate PV more than high cirrus.
+    $wLow  = 0.6
+    $wMid  = 0.3
+    $wHigh = 0.1
+    $idx = [math]::Min(1.0, [math]::Max(0.0, $wLow*$low + $wMid*$mid + $wHigh*$high))
+
+    # Nonlinear attenuation: PV power ~ (1 - idx)^k ; k>1 to penalize moderate cloud more strongly.
+    $k = 1.4
+    $att = [math]::Pow([math]::Max(0.0, 1.0 - $idx), $k)
+
+    # Keep nights at zero if clear_sky is zero; otherwise apply a small floor (to avoid locking to 0)
+    if ($att -lt 0.02) { $att = 0.02 }
+    return $att
+}
+
+function Get-PowerForecastOptimized {
+
+    $body = @{
+        date = (Get-Date $datetimeCET).ToString("dd-MM-yyyy")
+        location = @{ lat = [double]$PVsettings.latitude ; lng = [double]$PVsettings.longitude }
+        altitude = [int]$PVsettings.altitude
+        tilt = [int]$PVsettings.tilt
+        azimuth = [int]$PVsettings.orientation
+        totalWattPeak = [int]$PVsettings.totalWattPeak
+        wattInvertor = [int]$PVsettings.WattInvertor
+        timezone = $PVsettings.timezone
+    } | ConvertTo-Json -Depth 3
+
+    # ---- 1) Get hourly cloud cover from Open-Meteo (low/mid/high) ----
+    $omUrl = "https://api.open-meteo.com/v1/forecast?latitude=$($PVsettings.latitude)&longitude=$($PVsettings.longitude)" +
+             "&hourly=cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,rain,showers,snowfall" +
+             "&timezone=$([uri]::EscapeDataString($($PVsettings.timezone)))&forecast_days=2"
+
+    $openmeteo = Invoke-RestMethod -Uri $omUrl -Method GET -ErrorAction Stop
+
+    # Build a map: hour -> {low, mid, high} in fraction [0..1]
+    $cloudByHour = @{}
+    $times = $openmeteo.hourly.time
+    for ($i=0; $i -lt $times.Count; $i++) {
+        $t = [datetime]::Parse($times[$i])   # already in $tz due to timezone param
+        $key = $t.ToString("yyyy-MM-dd HH:00")  # hourly key
+
+        $cloudByHour[$key] = [pscustomobject]@{
+            Low  = [double]$openmeteo.hourly.cloud_cover_low[$i]  / 100.0
+            Mid  = [double]$openmeteo.hourly.cloud_cover_mid[$i]  / 100.0
+            High = [double]$openmeteo.hourly.cloud_cover_high[$i] / 100.0
+            All  = [double]$openmeteo.hourly.cloud_cover[$i]      / 100.0
+        }
+    }
+
+    # ---- 2) Get PV forecast from api.solar-forecast.org (15-min slots) ----
+    $sfUrl = "https://api.solar-forecast.org/forecast?provider=openmeteo"
+    $response = Invoke-RestMethod -Uri $sfUrl -Method POST -Body $body -ContentType "application/json" -UseBasicParsing -ErrorAction Stop
+
+    # Convert UNIX seconds to local time and filter to now..D+2 (similar to your code)
+    $nowLocal  = (Get-Date).AddMinutes(-14)
+    $endLocal  = (Get-Date).Date.AddDays(2)
+
+    $pv = $response |
+        Select-Object *, @{
+            Name="Timestamp";
+            Expression={ ([System.DateTimeOffset]::FromUnixTimeSeconds($_.dt).ToLocalTime().DateTime) }
+        } |
+        Where-Object { $_.Timestamp -ge $nowLocal -and $_.Timestamp -lt $endLocal }
+
+
+
+    # ---- 4) Merge by hour and compute 'P_scaled' = clear_sky * attenuation ----
+    $results = foreach ($row in $pv) {
+        # Round down to the nearest hour to match the Open-Meteo hourly grid
+        $hourKey = (Get-Date $row.Timestamp).ToString("yyyy-MM-dd HH:00")
+
+        $c = $null
+        if ($cloudByHour.ContainsKey($hourKey)) { $c = $cloudByHour[$hourKey] }
+
+        # If we don't have cloud data for that hour, fall back to provider 'clouds_all' if present
+        $att =
+            if ($c) { Get-CloudAttenuation -low $c.Low -mid $c.Mid -high $c.High }
+            elseif ($row.clouds_all -ne $null) {
+                # Fallback: treat 'clouds_all' as a single-layer index
+                $idx = [double]$row.clouds_all / 100.0
+                $idx = [math]::Min(1.0, [math]::Max(0.0, $idx))
+                [math]::Pow([math]::Max(0.0, 1.0 - $idx), 1.4)
+            }
+            else { 1.0 }
+
+        # clear_sky is the “unshaded” PV estimate; scale it by cloud attenuation
+        $clear = [double]$row.clear_sky
+        if ($clear -le 0) { $scaled = 0.0 } else { $scaled = [math]::Round($clear * $att, 3) }
+
+        # Return both original provider PV and our scaled clear-sky; keep clouds for debugging
+        [pscustomobject]@{
+            Timestamp        = $row.Timestamp
+            P_predicted_api  = [double]$row.P_predicted   # from api.solar-forecast.org
+            clear_sky        = $clear
+            P_predicted      = $scaled                    # <-- our computed value
+            clouds_all_api   = $row.clouds_all
+            #cloud_low_om     = if ($c) { [math]::Round($c.Low*100, 1) }  else { $null }
+            #cloud_mid_om     = if ($c) { [math]::Round($c.Mid*100, 1) }  else { $null }
+            #cloud_high_om    = if ($c) { [math]::Round($c.High*100, 1) } else { $null }
+        }
+    }
+
+    # ---- 5) Output a minimal selection (you can export to CSV if you like) ----
+    return $results | Select-Object -Property Timestamp, P_predicted
+}
+
+
+
 # Fetch Power Forecast using external api
 function Get-PowerForecast {
     
@@ -80,7 +196,7 @@ function Get-PowerForecast {
 
     $response = Invoke-RestMethod -Uri "https://api.solar-forecast.org/forecast?provider=openmeteo" -Method POST -Body $body -ContentType "application/json" -UseBasicParsing
     $prediction = $response | Select-Object * , @{Name="TimeStamp";Expression={([System.DateTimeOffset]::FromUnixTimeSeconds($_.dt).ToLocalTime().DateTime)}} | where-object { ($_.timestamp -ge (Get-Date $datetimeCET).AddMinutes(-14)) -and  ($_.timestamp -lt (Get-Date $datetimeCET).Date.AddDays(2))  }
-    return $prediction | Select-Object -Property Timestamp, P_predicted, clear_sky, clouds_all
+    return $prediction | Select-Object -Property Timestamp, P_predicted
 
 }
 
@@ -158,7 +274,9 @@ function ChargeBattery($activate) {
 
 $prices = Get-EpexPrices
 $soc = Get-BatteryStatus
-$PowerForecast = Get-PowerForecast
+#$PowerForecast = Get-PowerForecast
+$PowerForecast = Get-PowerForecastOptimized
+
 
 $joined = @()
 $CummulativePowerBalance = 0
