@@ -126,8 +126,8 @@ function Get-PowerForecastOptimized {
     $response = Invoke-RestMethod -Uri $sfUrl -Method POST -Body $body -ContentType "application/json" -UseBasicParsing -ErrorAction Stop
 
     # Convert UNIX seconds to local time and filter to now..D+2 (similar to your code)
-    $nowLocal  = (Get-Date).AddMinutes(-14)
-    $endLocal  = (Get-Date).Date.AddDays(2)
+    $nowLocal  = (Get-Date $datetimeCET).AddMinutes(-14)
+    $endLocal  = (Get-Date $datetimeCET).Date.AddDays(2)
 
     $pv = $response |
         Select-Object *, @{
