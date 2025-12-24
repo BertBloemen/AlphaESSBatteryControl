@@ -217,7 +217,7 @@ $Current = $joined[0]
 $minPredictedSOC = ($joined | Select-Object -First 40 | Measure-Object -Property EstSOC -Minimum).Minimum
 $maxPredictedSOC = ($joined | Select-Object -First 40 | Measure-Object -Property EstSOC -Maximum).Maximum
 
-$chargeNow = if ($Current.ChargeBattFromGrid -and ($maxPredictedSOC -lt 100) -and ($soc -le $($AlphaESSControl.maxBatterySoC))) {$true} else {$false}
+$chargeNow = if ($Current.ChargeBattFromGrid -and ($maxPredictedSOC -lt 95) -and ($soc -le $($AlphaESSControl.maxBatterySoC))) {$true} else {$false}
 $chargeNow100 = if ($chargeNow){100}else{0}
 
 $ActionObj = [PSCustomObject]@{
