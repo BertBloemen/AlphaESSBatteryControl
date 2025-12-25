@@ -274,8 +274,8 @@ function ChargeBattery($activate) {
 
 $prices = Get-EpexPrices
 $soc = Get-BatteryStatus
-$PowerForecast = Get-PowerForecast
-#$PowerForecast = Get-PowerForecastOptimized
+#$PowerForecast = Get-PowerForecast
+$PowerForecast = Get-PowerForecastOptimized
 
 
 $joined = @()
