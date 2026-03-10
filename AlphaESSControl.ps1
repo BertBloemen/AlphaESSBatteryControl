@@ -314,7 +314,7 @@ foreach ($p in $PowerForecast) {
         
     $entry = [PSCustomObject]@{
         Timestamp       = $p.Timestamp
-        P_predicted     = [math]::Round($p.P_predicted, 2)
+        P_predicted     = [math]::Round([decimal]$p.P_predicted, 2)
         Price           = $Price # in €/MWh
         PriceAverage    = $matchingPriceAVG
         PricePercentile = $matchingPricePCT
