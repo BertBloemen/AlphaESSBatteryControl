@@ -303,7 +303,7 @@ foreach ($p in $PowerForecast) {
         $CummulativePowerBalance += ($EstPowerBalance/4)
     }
 
-    $CummulativePowerBalanceOvershoot += ($EstPowerBalance/4)
+    $CummulativePowerBalanceOvershoot += [math]::Round(($EstPowerBalance/4),2)
     
     $estSoc = [math]::Round($soc + ($CummulativePowerBalance/100), 2)
     $estSocOvershoot = [math]::Round($soc + ($CummulativePowerBalanceOvershoot/100), 2)
@@ -314,7 +314,7 @@ foreach ($p in $PowerForecast) {
         
     $entry = [PSCustomObject]@{
         Timestamp       = $p.Timestamp
-        P_predicted     = $p.P_predicted
+        P_predicted     = [math]::Round($p.P_predicted, 2)
         Price           = $Price # in €/MWh
         PriceAverage    = $matchingPriceAVG
         PricePercentile = $matchingPricePCT
