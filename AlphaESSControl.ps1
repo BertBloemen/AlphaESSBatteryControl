@@ -303,11 +303,8 @@ foreach ($p in $PowerForecast) {
         $CummulativePowerBalance += ($EstPowerBalance/4)
     }
 
-
-    if ((($estSoc -gt 4)) -or (($estSoc -le 4) -and ($EstPowerBalance -gt 0))){
-        $CummulativePowerBalanceOvershoot += ($EstPowerBalance/4)
-    }
-
+    $CummulativePowerBalanceOvershoot += ($EstPowerBalance/4)
+    
     $estSoc = [math]::Round($soc + ($CummulativePowerBalance/100), 2)
     $estSocOvershoot = [math]::Round($soc + ($CummulativePowerBalanceOvershoot/100), 2)
     
