@@ -332,8 +332,8 @@ $joined | Export-Csv -Path ".\$datetime.csv" -Delimiter ";" -NoTypeInformation
 $joined | Select-Object -First 400 | Format-Table -Property *
 
 $Current = $joined[0]
-$minPredictedSOC = ($joined | Select-Object -First 40 | Measure-Object -Property EstSOC -Minimum).Minimum
-$maxPredictedSOC = ($joined | Select-Object -First 40 | Measure-Object -Property EstSOC -Maximum).Maximum
+$minPredictedSOC = ($joined | Select-Object -First $AlphaESSControl.QuartersLookahead | Measure-Object -Property EstSOC -Minimum).Minimum
+$maxPredictedSOC = ($joined | Select-Object -First $AlphaESSControl.QuartersLookahead | Measure-Object -Property EstSOC -Maximum).Maximum
 
 $chargeNow = if ($Current.ChargeBattFromGrid -and ($maxPredictedSOC -lt $($AlphaESSControl.maxBatterySoC)) -and ($soc -le $($AlphaESSControl.maxBatterySoC))) {$true} else {$false}
 $chargeNow100 = if ($chargeNow){100}else{0}
