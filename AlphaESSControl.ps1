@@ -322,7 +322,7 @@ foreach ($p in $PowerForecast) {
         #PriceLuminusSell = ((1000*$Price * 0.1018 - 1.2685)/100 - 5.99/100 - 5.0329/100 - 0.2042/100)*1.06 # in €/kWh
         EstSOC          = $estSoc
         EstUsage        = $EstUsage.power
-        EstPowerBalance = $EstPowerBalance
+        EstPowerBalance = [math]::Round($EstPowerBalance, 2)
         ChargeBattFromGrid = $ChargeBattFromGrid #if (($Price -lt $matchingPricePCT) -and ($p.P_predicted -lt $EstUsage.power)) { $true } else { $false }
         ChargeBattFromGrid100 = if ($ChargeBattFromGrid){100}else{0}
         EstSOCOvershoot    = $estSocOvershoot
