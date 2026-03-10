@@ -303,10 +303,10 @@ foreach ($p in $PowerForecast) {
         $CummulativePowerBalance += ($EstPowerBalance/4)
     }
 
-    $CummulativePowerBalanceOvershoot += [math]::Round(($EstPowerBalance/4),2)
+    $CummulativePowerBalanceOvershoot += [math]::Round(([decimal]$EstPowerBalance/4),2)
     
-    $estSoc = [math]::Round($soc + ($CummulativePowerBalance/100), 2)
-    $estSocOvershoot = [math]::Round($soc + ($CummulativePowerBalanceOvershoot/100), 2)
+    $estSoc = [math]::Round($soc + ([decimal]$CummulativePowerBalance/100), 2)
+    $estSocOvershoot = [math]::Round($soc + ([decimal]$CummulativePowerBalanceOvershoot/100), 2)
     
     
     if ($estSoc -le 4){ $estSoc=4}
@@ -326,7 +326,7 @@ foreach ($p in $PowerForecast) {
         ChargeBattFromGrid = $ChargeBattFromGrid #if (($Price -lt $matchingPricePCT) -and ($p.P_predicted -lt $EstUsage.power)) { $true } else { $false }
         ChargeBattFromGrid100 = if ($ChargeBattFromGrid){100}else{0}
         EstSOCOvershoot    = $estSocOvershoot
-        EstPowerBalanceOvershoot = $CummulativePowerBalanceOvershoot
+        EstPowerBalanceOvershoot = [math]::Round([decimal]$CummulativePowerBalanceOvershoot, 2)
     }
     
     
