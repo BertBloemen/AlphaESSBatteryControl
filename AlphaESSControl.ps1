@@ -303,8 +303,10 @@ foreach ($p in $PowerForecast) {
         $CummulativePowerBalance += ($EstPowerBalance/4)
     }
 
-    $CummulativePowerBalanceOvershoot += [math]::Round(([decimal]$EstPowerBalance/4),2)
-    
+    if ((($estSoc -gt 4)) -or (($estSoc -le 4) -and ($EstPowerBalance -gt 0))){
+        $CummulativePowerBalanceOvershoot += ($EstPowerBalance/4)
+    }
+
     $estSoc = [math]::Round($soc + ([decimal]$CummulativePowerBalance/100), 2)
     $estSocOvershoot = [math]::Round($soc + ([decimal]$CummulativePowerBalanceOvershoot/100), 2)
     
@@ -341,6 +343,9 @@ $joined | Select-Object -First 400 | Format-Table -Property *
 $Current = $joined[0]
 $minPredictedSOC = ($joined | Select-Object -First $AlphaESSControl.QuartersLookahead | Measure-Object -Property EstSOC -Minimum).Minimum
 $maxPredictedSOC = ($joined | Select-Object -First $AlphaESSControl.QuartersLookahead | Measure-Object -Property EstSOC -Maximum).Maximum
+
+$maxPredictedSOCOvershoot = ($joined | Select-Object -First $AlphaESSControl.QuartersLookahead | Measure-Object -Property EstSOCOvershoot -Maximum).Maximum
+$maxPowerBalanceOvershoot = ($joined | Select-Object -First $AlphaESSControl.QuartersLookahead | Measure-Object -Property EstPowerBalanceOvershoot -Maximum).Maximum
 
 $chargeNow = if ($Current.ChargeBattFromGrid -and ($maxPredictedSOC -lt $($AlphaESSControl.maxBatterySoC)) -and ($soc -le $($AlphaESSControl.maxBatterySoC))) {$true} else {$false}
 $chargeNow100 = if ($chargeNow){100}else{0}
