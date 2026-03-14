@@ -288,7 +288,7 @@ foreach ($p in $PowerForecast) {
     $Price = ($prices | Where-Object { $_.Timestamp -eq $p.Timestamp }).Price
     $matchingPriceAVG = [math]::Round(($prices | Where-Object { $_.Timestamp -ge $p.Timestamp } | Select-Object -First $AlphaESSControl.QuartersLookahead | Measure-Object -Property Price -Average).Average,2)
     
-    $sortedPrices = $prices | Where-Object { $_.Timestamp -ge $p.Timestamp } | Select-Object -ExpandProperty Price -first $AlphaESSControl.QuartersLookahead | Sort-Object Price 
+    $sortedPrices = $prices | Where-Object { $_.Timestamp -ge $p.Timestamp } | Select-Object -ExpandProperty Price -first 40 | Sort-Object Price 
     $percentileIndex = [math]::Floor($sortedPrices.Count * $AlphaESSControl.lowPriceThresholdPct)
     try{
         $matchingPricePCT = $sortedPrices[$percentileIndex]
