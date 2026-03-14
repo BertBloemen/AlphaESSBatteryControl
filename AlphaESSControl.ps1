@@ -265,9 +265,28 @@ function ChargeBattery($activate) {
     } catch {
         Write-Error "API call failed: $($_.Exception.Message)"
     }
+        
+}
+
+
+# Send DisCharge Command (based on the API documentation)
+function DisChargeBattery($activate) {
+
+    try {
+
+        
+
+
+
+    } catch {
+        Write-Error "API call failed: $($_.Exception.Message)"
+    }
     
     
 }
+
+
+####DisChargeBattery($false)
 
 
 # MAIN SCRIPT LOGIC
