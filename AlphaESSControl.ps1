@@ -288,7 +288,6 @@ function DisChargeBattery($activate) {
 
 ####DisChargeBattery($false)
 
-
 # MAIN SCRIPT LOGIC
 
 $prices = Get-EpexPrices
