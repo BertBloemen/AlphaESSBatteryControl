@@ -179,10 +179,13 @@ function Get-PowerForecastOptimized {
 }
 
 
+function Get-PVForecastOptimized {
 
-# Fetch Power Forecast using external api
-function Get-PowerForecast {
-    
+    param(
+        [Parameter(Mandatory=$true)]
+        [datetime]$P_Predicted
+    )
+
     $body = @{
         date = (Get-Date $datetimeCET).ToString("dd-MM-yyyy")
         location = @{ lat = [double]$PVsettings.latitude ; lng = [double]$PVsettings.longitude }
@@ -194,10 +197,271 @@ function Get-PowerForecast {
         timezone = $PVsettings.timezone
     } | ConvertTo-Json -Depth 3
 
-    $response = Invoke-RestMethod -Uri "https://api.solar-forecast.org/forecast?provider=openmeteo" -Method POST -Body $body -ContentType "application/json" -UseBasicParsing
-    $prediction = $response | Select-Object * , @{Name="TimeStamp";Expression={([System.DateTimeOffset]::FromUnixTimeSeconds($_.dt).ToLocalTime().DateTime)}} | where-object { ($_.timestamp -ge (Get-Date $datetimeCET).AddMinutes(-14)) -and  ($_.timestamp -lt (Get-Date $datetimeCET).Date.AddDays(2))  }
-    return $prediction | Select-Object -Property Timestamp, P_predicted
+    # ---- 1) Get hourly cloud cover from Open-Meteo (low/mid/high) ----
+    $omUrl = "https://api.open-meteo.com/v1/forecast?latitude=$($PVsettings.latitude)&longitude=$($PVsettings.longitude)" +
+             "&hourly=cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,rain,showers,snowfall" +
+             "&timezone=$([uri]::EscapeDataString($($PVsettings.timezone)))&forecast_days=2"
 
+    $openmeteo = Invoke-RestMethod -Uri $omUrl -Method GET -ErrorAction Stop
+
+    # Build a map: hour -> {low, mid, high} in fraction [0..1]
+    $cloudByHour = @{}
+    $times = $openmeteo.hourly.time
+    for ($i=0; $i -lt $times.Count; $i++) {
+        $t = [datetime]::Parse($times[$i])   # already in $tz due to timezone param
+        $key = $t.ToString("yyyy-MM-dd HH:00")  # hourly key
+
+        $cloudByHour[$key] = [pscustomobject]@{
+            Low  = [double]$openmeteo.hourly.cloud_cover_low[$i]  / 100.0
+            Mid  = [double]$openmeteo.hourly.cloud_cover_mid[$i]  / 100.0
+            High = [double]$openmeteo.hourly.cloud_cover_high[$i] / 100.0
+            All  = [double]$openmeteo.hourly.cloud_cover[$i]      / 100.0
+        }
+    }
+
+    $response = $P_Predicted
+
+    # Convert UNIX seconds to local time and filter to now..D+2 (similar to your code)
+    $nowLocal  = (Get-Date $datetimeCET).AddMinutes(-14)
+    $endLocal  = (Get-Date $datetimeCET).Date.AddDays(2)
+
+    $pv = $response |
+        Select-Object *, @{
+            Name="Timestamp";
+            Expression={ ([System.DateTimeOffset]::FromUnixTimeSeconds($_.dt).ToLocalTime().DateTime) }
+        } |
+        Where-Object { $_.Timestamp -ge $nowLocal -and $_.Timestamp -lt $endLocal }
+
+
+
+    # ---- 4) Merge by hour and compute 'P_scaled' = clear_sky * attenuation ----
+    $results = foreach ($row in $pv) {
+        # Round down to the nearest hour to match the Open-Meteo hourly grid
+        $hourKey = (Get-Date $row.Timestamp).ToString("yyyy-MM-dd HH:00")
+
+        $c = $null
+        if ($cloudByHour.ContainsKey($hourKey)) { $c = $cloudByHour[$hourKey] }
+
+        # If we don't have cloud data for that hour, fall back to provider 'clouds_all' if present
+        $att =
+            if ($c) { Get-CloudAttenuation -low $c.Low -mid $c.Mid -high $c.High }
+            elseif ($row.clouds_all -ne $null) {
+                # Fallback: treat 'clouds_all' as a single-layer index
+                $idx = [double]$row.clouds_all / 100.0
+                $idx = [math]::Min(1.0, [math]::Max(0.0, $idx))
+                [math]::Pow([math]::Max(0.0, 1.0 - $idx), 1.4)
+            }
+            else { 1.0 }
+
+        # clear_sky is the “unshaded” PV estimate; scale it by cloud attenuation
+        $clear = [double]$row.clear_sky
+        if ($clear -le 0) { $scaled = 0.0 } else { $scaled = [math]::Round($clear * $att, 3) }
+
+        # Return both original provider PV and our scaled clear-sky; keep clouds for debugging
+        [pscustomobject]@{
+            Timestamp        = $row.Timestamp
+            P_predicted_api  = [double]$row.P_predicted   # from api.solar-forecast.org
+            clear_sky        = $clear
+            P_predicted      = $scaled                    # <-- our computed value
+            clouds_all_api   = $row.clouds_all
+            #cloud_low_om     = if ($c) { [math]::Round($c.Low*100, 1) }  else { $null }
+            #cloud_mid_om     = if ($c) { [math]::Round($c.Mid*100, 1) }  else { $null }
+            #cloud_high_om    = if ($c) { [math]::Round($c.High*100, 1) } else { $null }
+        }
+    }
+
+    # ---- 5) Output a minimal selection (you can export to CSV if you like) ----
+    return $results | Select-Object -Property Timestamp, P_predicted
+}
+
+
+# Fetch Power Forecast using external api
+function Get-PVForecast {
+    param(
+        [Parameter(Mandatory=$true)]
+        [datetime]$datetimeCET,
+
+        [Parameter(Mandatory=$true)]
+        $PVsettings
+    )
+
+    # -------------------------------------------
+    # IANA Timezone → UTC offset (DST-aware)
+    # -------------------------------------------
+    function Get-TimezoneOffsetHours {
+        param(
+            [datetime]$dt,
+            [string]$ianaTZ
+        )
+
+        try {
+            $tz = [System.TimeZoneInfo]::FindSystemTimeZoneById($ianaTZ)
+        }
+        catch {
+            switch ($ianaTZ) {
+                "Europe/Brussels" { 
+                    $tz = [System.TimeZoneInfo]::FindSystemTimeZoneById("Romance Standard Time") 
+                }
+                Default { throw "Unsupported timezone: $ianaTZ" }
+            }
+        }
+
+        return $tz.GetUtcOffset($dt).TotalHours
+    }
+
+    function Deg2Rad { param([double]$deg) return ($deg * [Math]::PI / 180.0) }
+    function Rad2Deg { param([double]$rad) return ($rad * 180.0 / [Math]::PI) }
+
+    # -------------------------------------------
+    # Solar model (Spencer/NOAA)
+    # -------------------------------------------
+    function Get-SunPosition {
+        param(
+            [datetime]$dt,
+            [double]$lat,
+            [double]$lng,
+            [double]$utcOffset
+        )
+
+        $hour = $dt.Hour + ($dt.Minute / 60.0)
+        $N = $dt.DayOfYear
+        $gamma = 2.0 * [Math]::PI * ($N - 1) / 365.0
+
+        # Declination
+        $declRad =
+            0.006918 -
+            0.399912 * [Math]::Cos($gamma) +
+            0.070257 * [Math]::Sin($gamma) -
+            0.006758 * [Math]::Cos(2 * $gamma) +
+            0.000907 * [Math]::Sin(2 * $gamma) -
+            0.002697 * [Math]::Cos(3 * $gamma) +
+            0.001480 * [Math]::Sin(3 * $gamma)
+
+        # Equation of time
+        $B = Deg2Rad((360.0 / 365.0) * ($N - 81))
+        $EoT = 9.87 * [Math]::Sin(2 * $B) - 7.53 * [Math]::Cos($B) - 1.5 * [Math]::Sin($B)
+
+        # Solar time (DST‑aware)
+        $solarTime = $hour + (($EoT + 4.0 * $lng - 60.0 * $utcOffset) / 60.0)
+
+        # Hour angle
+        $H = Deg2Rad(15.0 * ($solarTime - 12.0))
+        $latRad = Deg2Rad($lat)
+
+        # Altitude
+        $alt = [Math]::Asin(
+            [Math]::Sin($latRad) * [Math]::Sin($declRad) +
+            [Math]::Cos($latRad) * [Math]::Cos($declRad) * [Math]::Cos($H)
+        )
+
+        if ($alt -lt 0) {
+            return [PSCustomObject]@{ AltitudeRad = -1; AzimuthRad = 0 }
+        }
+
+        # Azimuth
+        $cosAz = (
+            [Math]::Sin($declRad) - 
+            [Math]::Sin($latRad) * [Math]::Sin($alt)
+        ) / ([Math]::Cos($latRad) * [Math]::Cos($alt))
+
+        if ($cosAz -gt 1) { $cosAz = 1 }
+        if ($cosAz -lt -1) { $cosAz = -1 }
+
+        $az = [Math]::Acos($cosAz)
+        if ($H -gt 0) { $az = 2 * [Math]::PI - $az }
+
+        return [PSCustomObject]@{
+            AltitudeRad = $alt
+            AzimuthRad  = $az
+        }
+    }
+
+    # -------------------------------------------
+    # Medium‑tuned PV Model
+    # -------------------------------------------
+    function Get-PVPower {
+        param(
+            [double]$altRad,
+            [double]$azRad,
+            [double]$tiltDeg,
+            [double]$panelAzDeg,
+            [int]$Wp,
+            [int]$invLimit
+        )
+
+        if ($altRad -lt 0) { return 0 }
+
+        $tiltRad = Deg2Rad($tiltDeg)
+        $panelAzRad = Deg2Rad($panelAzDeg)
+
+        # AOI cosine
+        $cosAOI =
+            [Math]::Cos($tiltRad) * [Math]::Sin($altRad) +
+            [Math]::Sin($tiltRad) * [Math]::Cos($altRad) *
+            [Math]::Cos($azRad - $panelAzRad)
+
+        if ($cosAOI -lt 0) { $cosAOI = 0 }
+
+        # Medium‑tuned AOI: soften losses
+        $cosAOI_eff = 0.8 + 0.2 * $cosAOI  # preserves 80% even at low angles
+
+        # Enhanced clear-sky irradiance
+        $G0 = 1080.0 * [Math]::Sin($altRad)
+        if ($G0 -lt 0) { $G0 = 0 }
+
+        # Direct irradiance on panel
+        $Gdir = $G0 * $cosAOI_eff
+
+        # Diffuse sky irradiance (medium realism)
+        $Gdiff = 120.0 + 80.0 * [Math]::Sin($altRad)
+        if ($Gdiff -lt 0) { $Gdiff = 0 }
+
+        # Rough tilt factor for diffuse
+        $Gdiff_tilt = $Gdiff * 0.5
+
+        # Total irradiance
+        $G = $Gdir + $Gdiff_tilt
+
+        # Convert to power
+        $power = $Wp * ($G / 1000.0)
+
+        # Panel performance boost (modern mono ~ +8%)
+        $power *= 1.08
+
+        # Inverter clipping
+        if ($power -gt $invLimit) { $power = $invLimit }
+
+        return [Math]::Round($power, 1)
+    }
+
+    # -------------------------------------------
+    # Main loop
+    # -------------------------------------------
+    $results = @()
+    $start = $datetimeCET
+
+    for ($i = 0; $i -lt 48 * 4; $i++) {
+
+        $t = $start.AddMinutes(15 * $i)
+        $utcOffset = Get-TimezoneOffsetHours -dt $t -ianaTZ $PVsettings.timezone
+
+        $sun = Get-SunPosition -dt $t -lat $PVsettings.latitude -lng $PVsettings.longitude -utcOffset $utcOffset
+
+        $pv = Get-PVPower `
+            -altRad $sun.AltitudeRad `
+            -azRad $sun.AzimuthRad `
+            -tiltDeg $PVsettings.tilt `
+            -panelAzDeg $PVsettings.orientation `
+            -Wp $PVsettings.totalWattPeak `
+            -invLimit $PVsettings.wattInvertor
+
+        $results += [PSCustomObject]@{
+            timestamp = $t.ToString("yyyy-MM-dd HH:mm")
+            P_predicted = $pv
+        }
+    }
+
+    return $results
 }
 
 # construct the Alpha ESS authentication headers based on the specs of the API documentation
@@ -292,8 +556,15 @@ function DisChargeBattery($activate) {
 
 $prices = Get-EpexPrices
 $soc = Get-BatteryStatus
-#$PowerForecast = Get-PowerForecast
-$PowerForecast = Get-PowerForecastOptimized
+
+
+$now = Get-Date $datetimeCET
+$roundedMinutes = [math]::Floor($now.Minute / 15) * 15
+$roundedTime = Get-Date $datetimeCET -Hour $now.Hour -Minute $roundedMinutes -Second 0
+
+$PowerForecast = Get-PVForecast -datetimeCET $roundedTime -PVsettings $PVsettings
+$PowerForecast = Get-PVForecastOptimized -P_Predicted $PowerForecast
+$PowerForecast | ft
 
 
 $joined = @()
