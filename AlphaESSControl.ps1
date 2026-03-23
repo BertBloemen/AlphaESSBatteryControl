@@ -183,27 +183,18 @@ function Get-PVForecastOptimized {
 
     param(
         [Parameter(Mandatory=$true)]
-        [datetime]$P_Predicted
+        $P_Predicted
     )
 
-    $body = @{
-        date = (Get-Date $datetimeCET).ToString("dd-MM-yyyy")
-        location = @{ lat = [double]$PVsettings.latitude ; lng = [double]$PVsettings.longitude }
-        altitude = [int]$PVsettings.altitude
-        tilt = [int]$PVsettings.tilt
-        azimuth = [int]$PVsettings.orientation
-        totalWattPeak = [int]$PVsettings.totalWattPeak
-        wattInvertor = [int]$PVsettings.WattInvertor
-        timezone = $PVsettings.timezone
-    } | ConvertTo-Json -Depth 3
 
     # ---- 1) Get hourly cloud cover from Open-Meteo (low/mid/high) ----
     $omUrl = "https://api.open-meteo.com/v1/forecast?latitude=$($PVsettings.latitude)&longitude=$($PVsettings.longitude)" +
              "&hourly=cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,rain,showers,snowfall" +
-             "&timezone=$([uri]::EscapeDataString($($PVsettings.timezone)))&forecast_days=2"
+             "&timezone=$([uri]::EscapeDataString($($PVsettings.timezone)))&forecast_days=3"
 
     $openmeteo = Invoke-RestMethod -Uri $omUrl -Method GET -ErrorAction Stop
 
+#    $openmeteo
     # Build a map: hour -> {low, mid, high} in fraction [0..1]
     $cloudByHour = @{}
     $times = $openmeteo.hourly.time
@@ -219,26 +210,28 @@ function Get-PVForecastOptimized {
         }
     }
 
-    $response = $P_Predicted
+    $pv = $P_Predicted
 
     # Convert UNIX seconds to local time and filter to now..D+2 (similar to your code)
     $nowLocal  = (Get-Date $datetimeCET).AddMinutes(-14)
     $endLocal  = (Get-Date $datetimeCET).Date.AddDays(2)
-
+<#
     $pv = $response |
         Select-Object *, @{
             Name="Timestamp";
             Expression={ ([System.DateTimeOffset]::FromUnixTimeSeconds($_.dt).ToLocalTime().DateTime) }
         } |
         Where-Object { $_.Timestamp -ge $nowLocal -and $_.Timestamp -lt $endLocal }
-
+#>
 
 
     # ---- 4) Merge by hour and compute 'P_scaled' = clear_sky * attenuation ----
+        
     $results = foreach ($row in $pv) {
+        
         # Round down to the nearest hour to match the Open-Meteo hourly grid
         $hourKey = (Get-Date $row.Timestamp).ToString("yyyy-MM-dd HH:00")
-
+        
         $c = $null
         if ($cloudByHour.ContainsKey($hourKey)) { $c = $cloudByHour[$hourKey] }
 
@@ -271,11 +264,10 @@ function Get-PVForecastOptimized {
     }
 
     # ---- 5) Output a minimal selection (you can export to CSV if you like) ----
-    return $results | Select-Object -Property Timestamp, P_predicted
+    return $results | Select-Object -Property Timestamp, P_predicted, clear_sky
 }
 
 
-# Fetch Power Forecast using external api
 function Get-PVForecast {
     param(
         [Parameter(Mandatory=$true)]
@@ -406,15 +398,16 @@ function Get-PVForecast {
         $cosAOI_eff = 0.8 + 0.2 * $cosAOI  # preserves 80% even at low angles
 
         # Enhanced clear-sky irradiance
-        $G0 = 1080.0 * [Math]::Sin($altRad)
+        $G0 = 1040.0 * [Math]::Sin($altRad)
         if ($G0 -lt 0) { $G0 = 0 }
 
         # Direct irradiance on panel
         $Gdir = $G0 * $cosAOI_eff
 
         # Diffuse sky irradiance (medium realism)
-        $Gdiff = 120.0 + 80.0 * [Math]::Sin($altRad)
-        if ($Gdiff -lt 0) { $Gdiff = 0 }
+        $Gdiff = (120.0 + 80.0 * [Math]::Sin($altRad)) * 0.8
+        $Gdiff_tilt = $Gdiff * 0.45
+
 
         # Rough tilt factor for diffuse
         $Gdiff_tilt = $Gdiff * 0.5
@@ -426,7 +419,7 @@ function Get-PVForecast {
         $power = $Wp * ($G / 1000.0)
 
         # Panel performance boost (modern mono ~ +8%)
-        $power *= 1.08
+        $power *= 1.03
 
         # Inverter clipping
         if ($power -gt $invLimit) { $power = $invLimit }
@@ -458,15 +451,15 @@ function Get-PVForecast {
         $results += [PSCustomObject]@{
             timestamp = $t.ToString("yyyy-MM-dd HH:mm")
             P_predicted = $pv
+            clear_sky = $pv
         }
     }
 
     return $results
 }
 
+
 # construct the Alpha ESS authentication headers based on the specs of the API documentation
-
-
 function Get-AlphaESSAuthHeaders {
     $timestamp = [math]::Floor((Get-Date).ToUniversalTime().Subtract((Get-Date "1970-01-01T00:00:00Z").ToUniversalTime()).TotalSeconds)#+3600
     $signString = "$($AlphaESSSettings.alphaEssAppId)$($AlphaESSSettings.alphaEssApiKey)$timestamp"
@@ -563,8 +556,8 @@ $roundedMinutes = [math]::Floor($now.Minute / 15) * 15
 $roundedTime = Get-Date $datetimeCET -Hour $now.Hour -Minute $roundedMinutes -Second 0
 
 $PowerForecast = Get-PVForecast -datetimeCET $roundedTime -PVsettings $PVsettings
+
 $PowerForecast = Get-PVForecastOptimized -P_Predicted $PowerForecast
-$PowerForecast | ft
 
 
 $joined = @()
