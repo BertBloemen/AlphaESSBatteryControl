@@ -52,14 +52,7 @@ function Get-EpexPrices {
     $prices += ((Invoke-WebRequest -UseBasicParsing -Uri "https://dataportal-api.nordpoolgroup.com/api/DayAheadPrices?market=DayAhead&deliveryArea=BE&currency=EUR&date=$tomorrow").content | ConvertFrom-Json).multiAreaEntries
     
     $pricesQ = $prices | Select-Object deliveryStart, @{Name="Timestamp";Expression={[System.TimeZoneInfo]::ConvertTimeFromUtc((get-date ($_.deliveryStart)), $cetZone)}}, @{Name="Price";Expression={($_.entryPerArea.BE)}} | Where-Object {($_.timestamp -ge (get-date $datetimeCET).AddHours(-1))} | Select-Object Timestamp,Price
-    <##
-    $pricesH = $prices | Select-Object deliveryStart, @{Name="Timestamp";Expression={[System.TimeZoneInfo]::ConvertTimeFromUtc((get-date ($_.deliveryStart)), $cetZone)}}, @{Name="Price";Expression={($_.entryPerArea.BE)}} | Select-Object Timestamp,Price
-    $pricesH | Group-Object { $_.Timestamp.ToString('yyyy-MM-dd HH') } | ForEach-Object {
-        $avg = [math]::Round(($_.Group.Price -replace ',', '.' | ForEach-Object {[double]$_} | Measure-Object -Average).Average,2)
-        $_.Group | ForEach-Object { $_.Price = $avg }
-    }
-    $pricesH = $prices | Where-Object { $_.Timestamp -ge (get-date $datetimeCET).AddHours(-1) } | Select-Object Timestamp, Price
-    ###>
+
     return $pricesQ
     
 }
@@ -85,6 +78,7 @@ function Get-CloudAttenuation {
     if ($att -lt 0.02) { $att = 0.02 }
     return $att
 }
+
 
 function Get-PowerForecastOptimized {
 
@@ -212,18 +206,6 @@ function Get-PVForecastOptimized {
 
     $pv = $P_Predicted
 
-    # Convert UNIX seconds to local time and filter to now..D+2 (similar to your code)
-    $nowLocal  = (Get-Date $datetimeCET).AddMinutes(-14)
-    $endLocal  = (Get-Date $datetimeCET).Date.AddDays(2)
-<#
-    $pv = $response |
-        Select-Object *, @{
-            Name="Timestamp";
-            Expression={ ([System.DateTimeOffset]::FromUnixTimeSeconds($_.dt).ToLocalTime().DateTime) }
-        } |
-        Where-Object { $_.Timestamp -ge $nowLocal -and $_.Timestamp -lt $endLocal }
-#>
-
 
     # ---- 4) Merge by hour and compute 'P_scaled' = clear_sky * attenuation ----
         
@@ -257,9 +239,7 @@ function Get-PVForecastOptimized {
             clear_sky        = $clear
             P_predicted      = $scaled                    # <-- our computed value
             clouds_all_api   = $row.clouds_all
-            #cloud_low_om     = if ($c) { [math]::Round($c.Low*100, 1) }  else { $null }
-            #cloud_mid_om     = if ($c) { [math]::Round($c.Mid*100, 1) }  else { $null }
-            #cloud_high_om    = if ($c) { [math]::Round($c.High*100, 1) } else { $null }
+            
         }
     }
 
@@ -421,6 +401,8 @@ function Get-PVForecast {
         # Panel performance boost (modern mono ~ +8%)
         $power *= 1.03
 
+        $power = ($power/3)*2   # empirical tuning to better match the api.solar-forecast.org predictions (which are quite conservative)
+
         # Inverter clipping
         if ($power -gt $invLimit) { $power = $invLimit }
 
@@ -531,10 +513,6 @@ function DisChargeBattery($activate) {
 
     try {
 
-        
-
-
-
     } catch {
         Write-Error "API call failed: $($_.Exception.Message)"
     }
@@ -556,8 +534,10 @@ $roundedMinutes = [math]::Floor($now.Minute / 15) * 15
 $roundedTime = Get-Date $datetimeCET -Hour $now.Hour -Minute $roundedMinutes -Second 0
 
 $PowerForecast = Get-PVForecast -datetimeCET $roundedTime -PVsettings $PVsettings
-
+$PowerForecast
 $PowerForecast = Get-PVForecastOptimized -P_Predicted $PowerForecast
+
+#$PowerForecast = Get-PowerForecastOptimized    ## Internal Server Error since 23/03/2026 on the api.solar-forecast.org endpoint, fallback to the local model until it's fixed
 
 
 $joined = @()
