@@ -401,7 +401,7 @@ function Get-PVForecast {
         # Panel performance boost (modern mono ~ +8%)
         $power *= 1.03
 
-        $power = ($power/3)*2   # empirical tuning to better match the api.solar-forecast.org predictions (which are quite conservative)
+        #$power = ($power/3)*2   # empirical tuning to better match the api.solar-forecast.org predictions (which are quite conservative)
 
         # Inverter clipping
         if ($power -gt $invLimit) { $power = $invLimit }
