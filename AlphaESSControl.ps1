@@ -403,6 +403,7 @@ function Get-PVForecast {
 
         #$power = ($power/3)*2   # empirical tuning to better match the api.solar-forecast.org predictions (which are quite conservative)
 
+        
         # Inverter clipping
         if ($power -gt $invLimit) { $power = $invLimit }
 
