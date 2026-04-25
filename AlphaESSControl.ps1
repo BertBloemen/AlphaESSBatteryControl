@@ -535,7 +535,6 @@ $roundedMinutes = [math]::Floor($now.Minute / 15) * 15
 $roundedTime = Get-Date $datetimeCET -Hour $now.Hour -Minute $roundedMinutes -Second 0
 
 $PowerForecast = Get-PVForecast -datetimeCET $roundedTime -PVsettings $PVsettings
-$PowerForecast
 $PowerForecast = Get-PVForecastOptimized -P_Predicted $PowerForecast
 
 #$PowerForecast = Get-PowerForecastOptimized    ## Internal Server Error since 23/03/2026 on the api.solar-forecast.org endpoint, fallback to the local model until it's fixed
@@ -611,6 +610,7 @@ $maxPredictedSOCOvershoot = ($joined | Select-Object -First $AlphaESSControl.Qua
 $maxPowerBalanceOvershoot = ($joined | Select-Object -First $AlphaESSControl.QuartersLookahead | Measure-Object -Property EstPowerBalanceOvershoot -Maximum).Maximum
 
 $chargeNow = if ($Current.ChargeBattFromGrid -and ($maxPredictedSOC -lt $($AlphaESSControl.maxBatterySoC)) -and ($soc -le $($AlphaESSControl.maxBatterySoC))) {$true} else {$false}
+$chargenow = if ($Current.ChargeBattFromGrid -and ($current.Price -lt 0)) {$true} else {$false}     ## Override to charge whenever we predict negative prices, regardless of the SOC, to avoid curtailment and get paid for consuming excess PV production from the grid (can be set to $false if you prefer to only charge when it's profitable based on the price percentile logic)
 $chargeNow100 = if ($chargeNow){100}else{0}
 
 $ActionObj = [PSCustomObject]@{
