@@ -486,9 +486,9 @@ function ChargeBattery($activate) {
     try {
         
         if ($activate){
-            $HASettings.homeAssistantChargingOn | Invoke-WebRequest -Uri $_ -Method POST -UseBasicParsing
+            Invoke-WebRequest -Uri $HASettings.homeAssistantChargingOn -Method POST -UseBasicParsing
         }else{
-            $HASettings.homeAssistantChargingOff | Invoke-WebRequest -Uri $_ -Method POST -UseBasicParsing
+            Invoke-WebRequest -Uri $HASettings.homeAssistantChargingOff -Method POST -UseBasicParsing
         }
 
     } catch {
@@ -504,9 +504,9 @@ function DisChargeBattery($activate) {
     try {
         
         if ($activate){
-            $HASettings.homeAssistantDischargingOn | Invoke-WebRequest -Uri $_ -Method POST -UseBasicParsing
+            Invoke-WebRequest -Uri $HASettings.homeAssistantDischargingOn -Method POST -UseBasicParsing
         }else{
-            $HASettings.homeAssistantDischargingOff | Invoke-WebRequest -Uri $_ -Method POST -UseBasicParsing
+            Invoke-WebRequest -Uri $HASettings.homeAssistantDischargingOff -Method POST -UseBasicParsing
         }
 
     } catch {
