@@ -481,15 +481,29 @@ function Get-BatteryStatus {
 
 
 
+# Send Charge Command (based on the API documentation)
 function ChargeBattery($activate) {
 
+    $headers = Get-AlphaESSAuthHeaders
+
     try {
-        
+
+        $now = Get-Date $datetimeCET
+        $roundedMinutes = [math]::Floor($now.Minute / 15) * 15
+        $roundedTime = Get-Date $datetimeCET -Hour $now.Hour -Minute $roundedMinutes -Second 0
+
+        $timeStart = $roundedTime.ToString("HH:mm")
+        $timeStop = $roundedTime.AddMinutes(30).ToString("HH:mm")
+        $url = "https://openapi.alphaess.com/api/updateChargeConfigInfo?sysSn=$($AlphaESSSettings.alphaEssSystemId)"
+
         if ($activate){
             $HASettings.homeAssistantChargingOn | Invoke-WebRequest -Uri $_ -Method POST -UseBasicParsing
+            #$body = @{ "sysSn" = "$($AlphaESSSettings.alphaEssSystemId)"; "gridChargePower" = $($AlphaESSControl.maxPowerFromGrid); "batHighCap" = 100; "gridCharge" = 1 ; "timeChaf1" = $timeStart; "timeChaf2" = "00:00"; "timeChae1" = $timeStop; "timeChae2" = "00:00" } | ConvertTo-Json
         }else{
             $HASettings.homeAssistantChargingOff | Invoke-WebRequest -Uri $_ -Method POST -UseBasicParsing
+            #$body = @{ "sysSn" = "$($AlphaESSSettings.alphaEssSystemId)"; "gridChargePower" = $($AlphaESSControl.maxPowerFromGrid); "batHighCap" = 100; "gridCharge" = 0 ; "timeChaf1" = "00:00"; "timeChaf2" = "00:00"; "timeChae1" = "00:00"; "timeChae2" = "00:00" } | ConvertTo-Json
         }
+        #$out = Invoke-RestMethod -Uri $url -Headers $headers -Body $body -Method POST
 
     } catch {
         Write-Error "API call failed: $($_.Exception.Message)"
@@ -502,12 +516,6 @@ function ChargeBattery($activate) {
 function DisChargeBattery($activate) {
 
     try {
-        
-        if ($activate){
-            $HASettings.homeAssistantDischargingOn | Invoke-WebRequest -Uri $_ -Method POST -UseBasicParsing
-        }else{
-            $HASettings.homeAssistantDischargingOff | Invoke-WebRequest -Uri $_ -Method POST -UseBasicParsing
-        }
 
     } catch {
         Write-Error "API call failed: $($_.Exception.Message)"
